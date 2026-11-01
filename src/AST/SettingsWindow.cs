@@ -92,8 +92,6 @@ namespace AST
                 // Already applied: the bar was dragged to this edge and this list is only catching up.
                 if (cfg.EdgeValue == (BarEdge)edge.SelectedItem) return;
                 cfg.EdgeValue = (BarEdge)edge.SelectedItem;
-                // Switching between side and top or bottom needs a different default thickness.
-                cfg.Thickness = 0;
                 slider.Value = cfg.EffectiveThickness;
                 value.Text = cfg.EffectiveThickness + " px";
                 size.IsEnabled = cfg.EdgeValue != BarEdge.Off;

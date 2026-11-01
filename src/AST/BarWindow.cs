@@ -195,10 +195,7 @@ namespace AST
             }
             var edge = NearestEdge(cursor);
             if (edge == Settings.EdgeValue) return;
-            bool wasVertical = Settings.IsVertical;
             Settings.EdgeValue = edge;
-            // A side bar's width makes no sense as a top or bottom bar's height, so use the new edge's default.
-            if (Settings.IsVertical != wasVertical) Settings.Thickness = 0;
             Apply(Monitor, Settings);
         }
 
