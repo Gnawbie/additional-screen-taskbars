@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="Current" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Release</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{2A9E5C43-6B18-4C0F-A1E2-94D5B7F3C8A1}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <RootNamespace>ExampleStyle</RootNamespace>
+    <AssemblyName>ExampleStyle</AssemblyName>
+    <TargetFrameworkVersion>v4.7.1</TargetFrameworkVersion>
+    <LangVersion>latest</LangVersion>
+    <OutputPath>bin\$(Configuration)\</OutputPath>
+    <DebugType>none</DebugType>
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.Xaml" />
+    <Reference Include="WindowsBase" />
+    <Reference Include="PresentationCore" />
+    <Reference Include="PresentationFramework" />
+    <!-- Plugins compile against the AST exe, which holds IAstStyle. AST supplies itself at run time. -->
+    <Reference Include="AST">
+      <HintPath>..\..\..\src\AST\bin\Release\AST.exe</HintPath>
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="ExampleStyle.cs" />
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+</Project>

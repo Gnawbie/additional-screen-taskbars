@@ -1,0 +1,56 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:eb="clr-namespace:AST;assembly=AST">
+
+  <!-- A minimal theme to copy from. The only requirement is a DataTemplate with this exact key. -->
+  <BooleanToVisibilityConverter x:Key="BoolToVisible" />
+
+  <DataTemplate x:Key="AST.Bar">
+    <Border Background="#0B0221">
+      <DockPanel>
+        <TextBlock Text="{Binding TimeText}" Foreground="#00F0FF" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="6"
+                   Visibility="{Binding ShowClock, Converter={StaticResource BoolToVisible}}">
+          <TextBlock.Style>
+            <Style TargetType="TextBlock">
+              <Setter Property="DockPanel.Dock" Value="Right" />
+              <Style.Triggers>
+                <DataTrigger Binding="{Binding IsVertical}" Value="True">
+                  <Setter Property="DockPanel.Dock" Value="Bottom" />
+                </DataTrigger>
+              </Style.Triggers>
+            </Style>
+          </TextBlock.Style>
+        </TextBlock>
+        <ItemsControl ItemsSource="{Binding Items}" Focusable="False">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <eb:TaskPanel IsVertical="{Binding IsVertical}" IsRotated="{Binding RotateLabels}" IsIconsOnly="{Binding IconsOnly}" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Button Command="{Binding ActivateCommand}" ToolTip="{Binding Title}" Focusable="False" Margin="2">
+                <Button.Template>
+                  <ControlTemplate TargetType="Button">
+                    <Border x:Name="Box" BorderBrush="#FF2BD6" BorderThickness="1" Background="Transparent" Padding="6,2">
+                      <DockPanel>
+                        <Image Source="{Binding Icon}" Width="18" Height="18" />
+                        <TextBlock Text="{Binding Title}" Foreground="#FF2BD6" Margin="6,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                   Visibility="{Binding DataContext.ShowLabels, RelativeSource={RelativeSource AncestorType=ItemsControl}, Converter={StaticResource BoolToVisible}}" />
+                      </DockPanel>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                      <DataTrigger Binding="{Binding IsActive}" Value="True">
+                        <Setter TargetName="Box" Property="Background" Value="#40FF2BD6" />
+                      </DataTrigger>
+                    </ControlTemplate.Triggers>
+                  </ControlTemplate>
+                </Button.Template>
+              </Button>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </DockPanel>
+    </Border>
+  </DataTemplate>
+</ResourceDictionary>

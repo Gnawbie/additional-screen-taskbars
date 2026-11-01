@@ -1,0 +1,173 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:eb="clr-namespace:AST;assembly=AST">
+
+  <BooleanToVisibilityConverter x:Key="BoolToVisible" />
+
+  <!-- Turns a program's icon and name sideways when the "vertical names" option is on, and centers a lone icon. -->
+  <Style x:Key="RotateTaskContent" TargetType="FrameworkElement">
+    <Setter Property="Margin" Value="8,0" />
+    <Style.Triggers>
+      <DataTrigger Binding="{Binding DataContext.ShowLabels, RelativeSource={RelativeSource AncestorType=ItemsControl}}" Value="False">
+        <Setter Property="Margin" Value="0" />
+        <Setter Property="HorizontalAlignment" Value="Center" />
+      </DataTrigger>
+      <DataTrigger Binding="{Binding DataContext.RotateLabels, RelativeSource={RelativeSource AncestorType=ItemsControl}}" Value="True">
+        <Setter Property="LayoutTransform">
+          <Setter.Value><RotateTransform Angle="90" /></Setter.Value>
+        </Setter>
+      </DataTrigger>
+    </Style.Triggers>
+  </Style>
+
+  <Style x:Key="TaskButton" TargetType="Button">
+    <Setter Property="Focusable" Value="False" />
+    <Setter Property="ToolTip" Value="{Binding Title}" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Button">
+          <Border x:Name="Back" Background="Transparent" CornerRadius="5" Margin="2">
+            <Grid>
+              <DockPanel Style="{StaticResource RotateTaskContent}">
+                <Image Source="{Binding Icon}" Width="20" Height="20" VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality" />
+                <TextBlock x:Name="Label" Text="{Binding Title}" Foreground="#F2F2F2" Margin="8,0,0,0" FontSize="12"
+                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                           Visibility="{Binding DataContext.ShowLabels, RelativeSource={RelativeSource AncestorType=ItemsControl}, Converter={StaticResource BoolToVisible}}" />
+              </DockPanel>
+              <Border x:Name="Marker" Height="2" Width="16" CornerRadius="1" Background="#8A8A8A" VerticalAlignment="Bottom" HorizontalAlignment="Center" />
+            </Grid>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Back" Property="Background" Value="#22FFFFFF" />
+            </Trigger>
+            <DataTrigger Binding="{Binding IsActive}" Value="True">
+              <Setter TargetName="Back" Property="Background" Value="#33FFFFFF" />
+              <Setter TargetName="Marker" Property="Background" Value="#60CDFF" />
+              <Setter TargetName="Marker" Property="Width" Value="28" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding IsMinimized}" Value="True">
+              <Setter TargetName="Label" Property="Opacity" Value="0.65" />
+            </DataTrigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="FlatButton" TargetType="Button">
+    <Setter Property="Focusable" Value="False" />
+    <Setter Property="Foreground" Value="#F2F2F2" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Button">
+          <Border x:Name="Back" Background="Transparent" CornerRadius="5" Margin="2" Padding="8,4">
+            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Back" Property="Background" Value="#22FFFFFF" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="TrayButton" TargetType="Button">
+    <Setter Property="Focusable" Value="False" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Button">
+          <Border x:Name="Back" Background="Transparent" CornerRadius="4" Width="26" Height="28">
+            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Back" Property="Background" Value="#22FFFFFF" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <!-- The bar puts the Start button at the leading end and the clock at the trailing end, on either axis. -->
+  <Style x:Key="LeadingDock" TargetType="FrameworkElement">
+    <Setter Property="DockPanel.Dock" Value="Left" />
+    <Style.Triggers>
+      <DataTrigger Binding="{Binding IsVertical}" Value="True">
+        <Setter Property="DockPanel.Dock" Value="Top" />
+      </DataTrigger>
+    </Style.Triggers>
+  </Style>
+  <Style x:Key="TrailingDock" TargetType="FrameworkElement">
+    <Setter Property="DockPanel.Dock" Value="Right" />
+    <Setter Property="Margin" Value="10,4" />
+    <Style.Triggers>
+      <DataTrigger Binding="{Binding IsVertical}" Value="True">
+        <Setter Property="DockPanel.Dock" Value="Bottom" />
+      </DataTrigger>
+      <DataTrigger Binding="{Binding IsNarrow}" Value="True">
+        <Setter Property="Margin" Value="3,4" />
+      </DataTrigger>
+    </Style.Triggers>
+  </Style>
+
+  <DataTemplate x:Key="AST.Bar">
+    <Border Background="#1C1C1C" TextElement.FontFamily="Segoe UI Variable Text, Segoe UI">
+      <DockPanel LastChildFill="True">
+        <ContentControl Style="{StaticResource LeadingDock}" Focusable="False"
+                        Visibility="{Binding ShowStartButton, Converter={StaticResource BoolToVisible}}">
+          <Button Style="{StaticResource FlatButton}" Command="{Binding StartCommand}" ToolTip="Start" MinHeight="30" MinWidth="36">
+            <Grid Width="16" Height="16">
+              <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition /></Grid.ColumnDefinitions>
+              <Grid.RowDefinitions><RowDefinition /><RowDefinition /></Grid.RowDefinitions>
+              <Border Background="#60CDFF" Margin="0,0,1,1" />
+              <Border Background="#60CDFF" Margin="1,0,0,1" Grid.Column="1" />
+              <Border Background="#60CDFF" Margin="0,1,1,0" Grid.Row="1" />
+              <Border Background="#60CDFF" Margin="1,1,0,0" Grid.Row="1" Grid.Column="1" />
+            </Grid>
+          </Button>
+        </ContentControl>
+
+        <!-- The clock stays upright and shrinks to fit a thin side bar. -->
+        <Viewbox Style="{StaticResource TrailingDock}" Stretch="Uniform" StretchDirection="DownOnly" VerticalAlignment="Center"
+                 Visibility="{Binding ShowClock, Converter={StaticResource BoolToVisible}}">
+          <StackPanel>
+            <TextBlock Text="{Binding TimeText}" Foreground="#F2F2F2" FontSize="12" HorizontalAlignment="Center" />
+            <TextBlock Text="{Binding DateText}" Foreground="#C8C8C8" FontSize="11" HorizontalAlignment="Center" />
+          </StackPanel>
+        </Viewbox>
+
+        <!-- Docked after the clock so it sits just inside it. It wraps onto extra rows on a thin side bar. -->
+        <ItemsControl Style="{StaticResource TrailingDock}" ItemsSource="{Binding TrayItems}" Focusable="False" VerticalAlignment="Center" HorizontalAlignment="Center"
+                      Visibility="{Binding ShowTray, Converter={StaticResource BoolToVisible}}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Button Style="{StaticResource TrayButton}" Command="{Binding InvokeCommand}" ToolTip="{Binding Name}">
+                <TextBlock Text="{Binding Glyph}" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="#F2F2F2" />
+              </Button>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <ItemsControl ItemsSource="{Binding Items}" Focusable="False">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <eb:TaskPanel IsVertical="{Binding IsVertical}" IsRotated="{Binding RotateLabels}" IsIconsOnly="{Binding IconsOnly}" ItemLength="190" VerticalItemLength="40" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Button Style="{StaticResource TaskButton}" Command="{Binding ActivateCommand}" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </DockPanel>
+    </Border>
+  </DataTemplate>
+</ResourceDictionary>
