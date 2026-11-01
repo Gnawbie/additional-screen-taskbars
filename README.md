@@ -50,3 +50,7 @@ The output goes to `dist\`.
 - Other programs' tray icons, such as Discord's, stay in the hidden icons flyout rather than on the bar
 - Windows chooses which screen the Start menu opens on
 - A store app may show a generic icon
+
+## License
+
+[MIT](LICENSE)
