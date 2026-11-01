@@ -37,6 +37,16 @@ namespace AST
         public event Action LayoutDragged;
         /// <summary>Raised when the user flips "Lock taskbars" in the bar's right-click menu.</summary>
         public event Action LockToggled;
+        /// <summary>Raised when the user flips "Hide for fullscreen programs" in the right-click menu.</summary>
+        public event Action HideForFullscreenToggled;
+
+        /// <summary>Whether bars hide for fullscreen programs. Only used to tick the menu item.</summary>
+        public bool HidesForFullscreen { get; set; }
+        /// <summary>Raised when the user flips "Show pinned programs" in the right-click menu.</summary>
+        public event Action PinnedToggled;
+
+        /// <summary>Whether this bar lists pinned programs. Only used to tick the menu item.</summary>
+        public bool ShowsPinned { get; set; }
         /// <summary>Raised when the user flips "Show programs from all screens" in the right-click menu.</summary>
         public event Action AllScreensToggled;
 
@@ -364,8 +374,12 @@ namespace AST
             var el = e.OriginalSource as FrameworkElement;
             if (el?.DataContext is TaskItem item)
             {
-                menu.Items.Add(Item(item.IsActive ? "Minimize" : "Switch to", () => { if (item.IsActive) item.Minimize(); else item.Activate(); }));
-                menu.Items.Add(Item("Close window", item.Close));
+                if (item.IsPinned) menu.Items.Add(Item("Open", item.Activate));
+                else
+                {
+                    menu.Items.Add(Item(item.IsActive ? "Minimize" : "Switch to", () => { if (item.IsActive) item.Minimize(); else item.Activate(); }));
+                    menu.Items.Add(Item("Close window", item.Close));
+                }
                 menu.Items.Add(new Separator());
             }
             var pages = (el?.DataContext as TrayItem)?.SettingsPages;
@@ -394,6 +408,12 @@ namespace AST
             var allScreens = new MenuItem { Header = "Show programs from all screens", IsCheckable = true, IsChecked = ShowsAllScreens };
             allScreens.Click += (s, a) => AllScreensToggled?.Invoke();
             menu.Items.Add(allScreens);
+            var pinned = new MenuItem { Header = "Show pinned programs", IsCheckable = true, IsChecked = ShowsPinned };
+            pinned.Click += (s, a) => PinnedToggled?.Invoke();
+            menu.Items.Add(pinned);
+            var hide = new MenuItem { Header = "Hide for fullscreen programs", IsCheckable = true, IsChecked = HidesForFullscreen };
+            hide.Click += (s, a) => HideForFullscreenToggled?.Invoke();
+            menu.Items.Add(hide);
             var locked = new MenuItem { Header = "Lock taskbars", IsCheckable = true, IsChecked = IsLocked };
             locked.Click += (s, a) => LockToggled?.Invoke();
             menu.Items.Add(locked);

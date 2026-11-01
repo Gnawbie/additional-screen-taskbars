@@ -31,6 +31,7 @@ namespace AST
             _showSettings = showSettings;
             _tracker.Changed += OnWindowsChanged;
             _tray.Changed += OnTrayChanged;
+            _tray.PinnedChanged += ApplyPinned;
 
             _clock = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
             _clock.Tick += (s, e) => TickClock();
@@ -76,6 +77,16 @@ namespace AST
                         Config.OwnScreenProgramsOnly = !Config.OwnScreenProgramsOnly;
                         Sync();
                     };
+                    bar.PinnedToggled += () =>
+                    {
+                        Config.ShowPinnedPrograms = !Config.ShowPinnedPrograms;
+                        Sync();
+                    };
+                    bar.HideForFullscreenToggled += () =>
+                    {
+                        Config.KeepBarsOverFullscreen = !Config.KeepBarsOverFullscreen;
+                        Sync();
+                    };
                     bar.LockToggled += () =>
                     {
                         Config.LockBars = !Config.LockBars;
@@ -99,6 +110,8 @@ namespace AST
                 bar.IsLocked = Config.LockBars;
                 bar.ShowsAllScreens = !Config.OwnScreenProgramsOnly;
                 bar.ViewModel.ShowTray = !Config.HideTrayButtons;
+                bar.ShowsPinned = Config.ShowPinnedPrograms;
+                bar.HidesForFullscreen = !Config.KeepBarsOverFullscreen;
             }
             foreach (var id in _bars.Keys.Where(k => !wanted.Contains(k)).ToList())
             {
@@ -107,6 +120,7 @@ namespace AST
             }
             Config.Save();
             TickClock();
+            ApplyPinned();
             _tracker.Refresh();
         }
 
@@ -130,9 +144,15 @@ namespace AST
         {
             foreach (var bar in _bars.Values)
             {
-                bar.SetFullscreenHidden(WindowTracker.IsFullscreenOn(bar.Monitor, windows));
+                bar.SetFullscreenHidden(!Config.KeepBarsOverFullscreen && WindowTracker.IsFullscreenOn(bar.Monitor, windows));
                 bar.ViewModel.Update(Config.OwnScreenProgramsOnly ? windows.Where(w => w.Monitor == bar.Monitor.Handle) : windows);
             }
+        }
+
+        private void ApplyPinned()
+        {
+            var pinned = Config.ShowPinnedPrograms ? _tray.Pinned : new List<PinnedEntry>();
+            foreach (var bar in _bars.Values) bar.ViewModel.SetPinned(pinned);
         }
 
         private void OnTrayChanged()

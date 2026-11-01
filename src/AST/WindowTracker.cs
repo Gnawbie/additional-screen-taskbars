@@ -137,19 +137,34 @@ namespace AST
         /// <summary>True when the topmost window on the screen is fullscreen, whether or not it has focus.</summary>
         public static bool IsFullscreenOn(MonitorInfo monitor, List<TrackedWindow> zOrdered)
         {
+            // Some games have no title or use tool-window styles, so the list of open windows leaves them out.
+            if (ForegroundIsFullscreenOn(monitor)) return true;
             foreach (var w in zOrdered)
             {
                 if (w.Monitor != monitor.Handle || w.IsMinimized) continue;
-                if (!Native.GetWindowRect(w.Handle, out var r)) return false;
-                var b = monitor.Bounds;
-                bool covers = r.Left <= b.Left && r.Top <= b.Top && r.Right >= b.Right && r.Bottom >= b.Bottom;
-                if (!covers) return false;
-                long style = Native.GetWindowLongPtr(w.Handle, Native.GWL_STYLE).ToInt64();
-                bool captioned = (style & Native.WS_CAPTION) == Native.WS_CAPTION;
-                // A maximized window with a title bar can slightly overhang the screen but is not fullscreen.
-                return !(captioned && Native.IsZoomed(w.Handle));
+                return CoversMonitor(w.Handle, monitor);
             }
             return false;
+        }
+
+        private static bool ForegroundIsFullscreenOn(MonitorInfo monitor)
+        {
+            IntPtr fg = Native.GetForegroundWindow();
+            if (fg == IntPtr.Zero || Native.MonitorFromWindow(fg, Native.MONITOR_DEFAULTTONEAREST) != monitor.Handle) return false;
+            Native.GetWindowThreadProcessId(fg, out uint pid);
+            if (pid == Process.GetCurrentProcess().Id || IgnoredClasses.Contains(Native.ClassOf(fg))) return false;
+            return CoversMonitor(fg, monitor);
+        }
+
+        private static bool CoversMonitor(IntPtr hwnd, MonitorInfo monitor)
+        {
+            if (!Native.GetWindowRect(hwnd, out var r)) return false;
+            var b = monitor.Bounds;
+            if (r.Left > b.Left || r.Top > b.Top || r.Right < b.Right || r.Bottom < b.Bottom) return false;
+            long style = Native.GetWindowLongPtr(hwnd, Native.GWL_STYLE).ToInt64();
+            bool captioned = (style & Native.WS_CAPTION) == Native.WS_CAPTION;
+            // A maximized window with a title bar can slightly overhang the screen but is not fullscreen.
+            return !(captioned && Native.IsZoomed(hwnd));
         }
 
         public void Dispose()

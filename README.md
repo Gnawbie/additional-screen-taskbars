@@ -17,9 +17,10 @@ Windows 11 can't give each screen its own taskbar position. AST adds a separate 
 - Show icons only (the default), or right-click a bar and choose **Show program names**
 - List programs from all screens (the default), or right-click a bar and untick **Show programs from all screens** to list only that screen's programs
 - Show program names vertically on side bars
+- Right-click a bar and choose **Show pinned programs** to also list what's pinned to the Windows taskbar
 - Tray buttons for hidden icons, network and volume, with live status
 - Choose the Modern or Classic look, or add your own (see [docs/MODDING.md](docs/MODDING.md))
-- Bars hide themselves when a fullscreen app is on their screen
+- Bars hide when a fullscreen or borderless program covers their screen, even if it loses focus. To keep them showing, right-click a bar and untick **Hide for fullscreen programs**
 
 AST uses the documented Windows app bar API. It doesn't inject code into Explorer or games, and it doesn't hook the keyboard.
 

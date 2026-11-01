@@ -59,6 +59,20 @@ namespace AST
             ActivateCommand = new RelayCommand(Activate);
         }
 
+        /// <summary>A pinned program with no open window. Activating it starts the program.</summary>
+        internal TaskItem(PinnedEntry pinned)
+        {
+            _pinned = pinned;
+            IsPinned = true;
+            Title = pinned.Name;
+            Icon = PinnedPrograms.IconFor(pinned);
+            ActivateCommand = new RelayCommand(Activate);
+        }
+
+        private readonly PinnedEntry _pinned;
+
+        /// <summary>True for a pinned program that isn't running, which has no window to show as active.</summary>
+        public bool IsPinned { get; }
         public IntPtr Handle { get; }
         public ImageSource Icon { get; }
         public string Title { get => _title; internal set => Set(ref _title, value); }
@@ -70,6 +84,11 @@ namespace AST
 
         public void Activate()
         {
+            if (IsPinned)
+            {
+                PinnedPrograms.Launch(_pinned);
+                return;
+            }
             if (Native.GetForegroundWindow() == Handle && !Native.IsIconic(Handle))
             {
                 Native.ShowWindowAsync(Handle, Native.SW_MINIMIZE);
@@ -221,17 +240,31 @@ namespace AST
             Native.keybd_event(Native.VK_CONTROL, 0, Native.KEYEVENTF_KEYUP, UIntPtr.Zero);
         }
 
+        private string _pinnedSignature = "";
+
+        /// <summary>Pinned programs sit at the start of the bar, ahead of open windows.</summary>
+        internal void SetPinned(IEnumerable<PinnedEntry> pinned)
+        {
+            var list = pinned.ToList();
+            string signature = string.Join("\n", list.Select(p => p.AppId));
+            if (signature == _pinnedSignature) return;
+            _pinnedSignature = signature;
+            for (int i = Items.Count - 1; i >= 0; i--)
+                if (Items[i].IsPinned) Items.RemoveAt(i);
+            for (int i = 0; i < list.Count; i++) Items.Insert(i, new TaskItem(list[i]));
+        }
+
         /// <summary>Applies a new window list, keeping existing items in place so buttons don't jump around.</summary>
         internal void Update(IEnumerable<TrackedWindow> windows)
         {
             var current = windows.ToDictionary(w => w.Handle);
             for (int i = Items.Count - 1; i >= 0; i--)
-                if (!current.ContainsKey(Items[i].Handle)) Items.RemoveAt(i);
+                if (!Items[i].IsPinned && !current.ContainsKey(Items[i].Handle)) Items.RemoveAt(i);
             var known = new HashSet<IntPtr>(Items.Select(i => i.Handle));
             // Enumeration is newest-on-top, so reverse to add new windows at the end of the bar.
             foreach (var w in current.Values.Reverse())
                 if (!known.Contains(w.Handle)) Items.Add(new TaskItem(w.Handle));
-            foreach (var item in Items)
+            foreach (var item in Items.Where(i => !i.IsPinned))
             {
                 var w = current[item.Handle];
                 item.Title = w.Title;

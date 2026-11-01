@@ -45,6 +45,10 @@ namespace AST
         [DataMember] public bool ShowProgramNames;
         /// <summary>Stops bars being moved or resized by dragging.</summary>
         [DataMember] public bool LockBars;
+        /// <summary>Hiding for fullscreen programs is the default, and a value missing from an older config file reads as false.</summary>
+        [DataMember] public bool KeepBarsOverFullscreen;
+        /// <summary>Also lists the Windows taskbar's pinned programs that aren't running.</summary>
+        [DataMember] public bool ShowPinnedPrograms;
         /// <summary>Tray buttons show by default, and a value missing from an older config file reads as false.</summary>
         [DataMember] public bool HideTrayButtons;
         /// <summary>Lists only a bar's own screen. Programs from all screens is the default, and a missing value reads as false.</summary>

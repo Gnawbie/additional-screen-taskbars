@@ -29,6 +29,7 @@ namespace AST
     internal sealed class TrayMirror : IDisposable
     {
         private const string TrayButtonId = "SystemTrayIcon";
+        private const string TaskButtonClass = "Taskbar.TaskListButtonAutomationPeer";
         private const string ClockClass = "SystemTray.OmniButtonLeft";
         private const string ShowDesktopClass = "SystemTray.ShowDesktopButton";
         private const string NetworkClass = "SystemTray.AccentButton";
@@ -50,8 +51,12 @@ namespace AST
         private string _signature = "";
         private bool _scanning;
 
+        private string _pinnedSignature = "";
+
         public List<TrayEntry> Current { get; private set; } = new List<TrayEntry>();
+        public List<PinnedEntry> Pinned { get; private set; } = new List<PinnedEntry>();
         public event Action Changed;
+        public event Action PinnedChanged;
 
         public TrayMirror()
         {
@@ -67,23 +72,33 @@ namespace AST
             _scanning = true;
             Task.Run(() =>
             {
-                List<TrayEntry> entries;
-                try { entries = Read(); }
+                var entries = new List<TrayEntry>();
+                var pinned = new List<PinnedEntry>();
+                try { Read(entries, pinned); }
                 catch (Exception ex)
                 {
                     // Expected while Explorer restarts. The next scan picks the buttons up again.
                     Log.Write("Tray scan failed: " + ex.Message);
-                    entries = new List<TrayEntry>();
+                    entries.Clear();
                 }
-                _dispatcher.BeginInvoke(new Action(() => Publish(entries)));
+                _dispatcher.BeginInvoke(new Action(() => Publish(entries, pinned)));
             });
         }
 
-        private void Publish(List<TrayEntry> entries)
+        private void Publish(List<TrayEntry> entries, List<PinnedEntry> pinned)
         {
             _scanning = false;
             // An empty result is a passing state, such as Explorer restarting, so keep the buttons on show.
             if (entries.Count == 0) return;
+
+            string pinnedSignature = string.Join("\n", pinned.Select(p => p.AppId + "|" + p.Name));
+            if (pinnedSignature != _pinnedSignature)
+            {
+                _pinnedSignature = pinnedSignature;
+                Pinned = pinned;
+                PinnedChanged?.Invoke();
+            }
+
             string signature = string.Join("\n", entries.Select(e => e.Glyph + e.Name));
             if (signature == _signature) return;
             _signature = signature;
@@ -91,29 +106,34 @@ namespace AST
             Changed?.Invoke();
         }
 
-        private static List<TrayEntry> Read()
+        private static void Read(List<TrayEntry> entries, List<PinnedEntry> pinned)
         {
             IntPtr taskbar = Native.FindWindow("Shell_TrayWnd", null);
-            if (taskbar == IntPtr.Zero) return new List<TrayEntry>();
+            if (taskbar == IntPtr.Zero) return;
 
             // The raw tree, because the filtered view can leave these buttons out while a fullscreen app is active.
-            var found = new List<AutomationElement>();
-            Collect(AutomationElement.FromHandle(taskbar), found, 0);
-            return found
+            var trayButtons = new List<AutomationElement>();
+            var taskButtons = new List<AutomationElement>();
+            Collect(AutomationElement.FromHandle(taskbar), trayButtons, taskButtons, 0);
+            entries.AddRange(trayButtons
                 .Where(e => e.Current.ClassName != ClockClass && e.Current.ClassName != ShowDesktopClass)
                 .OrderBy(e => e.Current.BoundingRectangle.X)
-                .Select(Describe)
-                .ToList();
+                .Select(Describe));
+            pinned.AddRange(taskButtons
+                .OrderBy(e => e.Current.BoundingRectangle.X)
+                .Select(e => PinnedPrograms.FromTaskbarButton(e.Current.Name, e.Current.AutomationId))
+                .Where(p => p != null));
         }
 
-        private static void Collect(AutomationElement parent, List<AutomationElement> found, int depth)
+        private static void Collect(AutomationElement parent, List<AutomationElement> trayButtons, List<AutomationElement> taskButtons, int depth)
         {
             if (depth > MaxTreeDepth) return;
             var walker = TreeWalker.RawViewWalker;
             for (var child = walker.GetFirstChild(parent); child != null; child = walker.GetNextSibling(child))
             {
-                if (child.Current.AutomationId == TrayButtonId) found.Add(child);
-                Collect(child, found, depth + 1);
+                if (child.Current.AutomationId == TrayButtonId) trayButtons.Add(child);
+                else if (child.Current.ClassName == TaskButtonClass) taskButtons.Add(child);
+                Collect(child, trayButtons, taskButtons, depth + 1);
             }
         }
 

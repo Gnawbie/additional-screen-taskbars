@@ -49,6 +49,10 @@
             <DataTrigger Binding="{Binding IsMinimized}" Value="True">
               <Setter TargetName="Label" Property="Opacity" Value="0.65" />
             </DataTrigger>
+            <!-- A program that isn't running gets no underline, as on the normal taskbar. -->
+            <DataTrigger Binding="{Binding IsPinned}" Value="True">
+              <Setter TargetName="Marker" Property="Visibility" Value="Hidden" />
+            </DataTrigger>
           </ControlTemplate.Triggers>
         </ControlTemplate>
       </Setter.Value>

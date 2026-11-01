@@ -48,7 +48,8 @@ Each item in `Items` is a `TaskItem`:
 |---|---|
 | `Title`, `Icon` | The window's title and icon |
 | `IsActive`, `IsMinimized` | The window's state |
-| `ActivateCommand` | Switch to the window, or minimize it if it's already active |
+| `IsPinned` | A pinned program that isn't running, so it has no window |
+| `ActivateCommand` | Switch to the window, minimize it if it's already active, or start a pinned program |
 
 ### Laying out buttons
 
