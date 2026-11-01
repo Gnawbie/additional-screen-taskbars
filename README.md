@@ -2,6 +2,10 @@
 
 Windows 11 can't give each screen its own taskbar position. AST adds a separate taskbar to your other screens, and each screen can have its own setting.
 
+![Two screens side by side: the Windows taskbar along the bottom of the main screen, and an AST taskbar down the left side of the second screen](docs/screenshot.png)
+
+*The Windows taskbar on the main screen, with an AST bar on the side of the second screen.*
+
 ## Features
 
 - Put a bar on the top, bottom, left or right of each screen, or turn it off for that screen
