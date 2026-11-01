@@ -60,4 +60,4 @@ The output goes to `dist\`.
 
 ## License
 
-[MIT](LICENSE)
+AST is freeware. You can use, copy, share and modify it for free, but you can't sell it. See the [license](LICENSE), which is the MIT License with the Commons Clause.
