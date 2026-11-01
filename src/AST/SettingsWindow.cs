@@ -30,6 +30,7 @@ namespace AST
             var root = new StackPanel { Margin = new Thickness(16) };
             root.Children.Add(Heading("Screens"));
             foreach (var m in _manager.CurrentMonitors) root.Children.Add(MonitorRow(m));
+            root.Children.Add(Note("Experimental: a bar on your main screen replaces the Windows taskbar, which stays hidden until you set that screen to Off. It also returns while AST is closed. If it ever stays hidden, run AST.exe --restore-taskbar."));
             root.Children.Add(Note("You can also drag an empty part of a bar to another edge, or drag its inner edge to resize it. To stop this, right-click a bar and choose Lock taskbars."));
             var identify = new Button { Content = "Identify screens", Padding = new Thickness(10, 3, 10, 3), Margin = new Thickness(0, 6, 0, 0), HorizontalAlignment = HorizontalAlignment.Left };
             identify.Click += (s, e) => IdentifyScreens();
@@ -91,11 +92,18 @@ namespace AST
             {
                 // Already applied: the bar was dragged to this edge and this list is only catching up.
                 if (cfg.EdgeValue == (BarEdge)edge.SelectedItem) return;
+                bool replacingNow = m.IsPrimary && cfg.EdgeValue == BarEdge.Off;
                 cfg.EdgeValue = (BarEdge)edge.SelectedItem;
                 slider.Value = cfg.EffectiveThickness;
                 value.Text = cfg.EffectiveThickness + " px";
                 size.IsEnabled = cfg.EdgeValue != BarEdge.Off;
                 _manager.Sync();
+                if (replacingNow)
+                {
+                    // AST is now the only taskbar, so it has to be there after a restart too.
+                    Installer.StartsWithWindows = true;
+                    Rebuild();
+                }
             };
             slider.PreviewMouseUp += (s, e) => { cfg.Thickness = (int)slider.Value; _manager.Sync(); };
             slider.ValueChanged += (s, e) => value.Text = (int)slider.Value + " px";

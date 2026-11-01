@@ -16,6 +16,7 @@ namespace AST
         private readonly DispatcherTimer _displayDebounce;
         private readonly Action _showSettings;
         private List<MonitorInfo> _monitors = new List<MonitorInfo>();
+        private bool _replacingTaskbar;
 
         public Config Config { get; }
         public ThemeManager Themes { get; }
@@ -32,6 +33,7 @@ namespace AST
             _tracker.Changed += OnWindowsChanged;
             _tray.Changed += OnTrayChanged;
             _tray.PinnedChanged += ApplyPinned;
+            _tray.OrderChanged += ApplyOrder;
 
             _clock = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
             _clock.Tick += (s, e) => TickClock();
@@ -82,6 +84,8 @@ namespace AST
                         Config.ShowPinnedPrograms = !Config.ShowPinnedPrograms;
                         Sync();
                     };
+                    bar.PinToggled += TogglePin;
+                    bar.IsItemPinned = IsPinned;
                     bar.HideForFullscreenToggled += () =>
                     {
                         Config.KeepBarsOverFullscreen = !Config.KeepBarsOverFullscreen;
@@ -118,9 +122,14 @@ namespace AST
                 _bars[id].Close();
                 _bars.Remove(id);
             }
+            // A bar on the main screen takes the place of the Windows taskbar, which would otherwise sit alongside it.
+            _replacingTaskbar = _monitors.Any(m => m.IsPrimary && Config.For(m).EdgeValue != BarEdge.Off);
+            if (_replacingTaskbar) MainTaskbar.Engage(Config);
+            else MainTaskbar.Release(Config);
             Config.Save();
             TickClock();
             ApplyPinned();
+            ApplyOrder();
             _tracker.Refresh();
         }
 
@@ -142,6 +151,7 @@ namespace AST
 
         private void OnWindowsChanged(List<TrackedWindow> windows)
         {
+            if (_replacingTaskbar) MainTaskbar.KeepHidden();
             foreach (var bar in _bars.Values)
             {
                 bar.SetFullscreenHidden(!Config.KeepBarsOverFullscreen && WindowTracker.IsFullscreenOn(bar.Monitor, windows));
@@ -149,10 +159,55 @@ namespace AST
             }
         }
 
+        private void ApplyOrder()
+        {
+            foreach (var bar in _bars.Values) bar.ViewModel.ApplyOrder(_tray.TaskOrder);
+        }
+
         private void ApplyPinned()
         {
-            var pinned = Config.ShowPinnedPrograms ? _tray.Pinned : new List<PinnedEntry>();
+            var pinned = new List<PinnedEntry>();
+            if (Config.ShowPinnedPrograms)
+            {
+                pinned.AddRange(_tray.Pinned.Where(p => !IsHiddenPin(p.AppId)));
+                pinned.AddRange(Config.ExtraPins
+                    .Where(x => !_tray.Pinned.Any(p => SameApp(p.AppId, x.AppId)))
+                    .Select(x => new PinnedEntry { AppId = x.AppId, Name = x.Name, Shortcut = x.Path, IsExtra = true }));
+            }
             foreach (var bar in _bars.Values) bar.ViewModel.SetPinned(pinned);
+        }
+
+        private static bool SameApp(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+        private bool IsHiddenPin(string appId) => Config.HiddenPins.Any(h => SameApp(h, appId));
+
+        /// <summary>Whether a program counts as pinned, for choosing between "Pin" and "Unpin" in its menu.</summary>
+        private bool IsPinned(TaskItem item)
+        {
+            if (item.AppId == null) return false;
+            if (Config.ExtraPins.Any(x => SameApp(x.AppId, item.AppId))) return true;
+            return !IsHiddenPin(item.AppId) && _tray.TaskOrder.Any(o => o.IsPinned && SameApp(o.AppId, item.AppId));
+        }
+
+        /// <summary>
+        /// Windows doesn't let other programs change its taskbar, so these pins belong to AST's bars.
+        /// Pinning also turns the option on, because otherwise the pin wouldn't appear.
+        /// </summary>
+        private void TogglePin(TaskItem item)
+        {
+            if (item.AppId == null) return;
+            if (IsPinned(item))
+            {
+                Config.ExtraPins.RemoveAll(x => SameApp(x.AppId, item.AppId));
+                if (_tray.TaskOrder.Any(o => o.IsPinned && SameApp(o.AppId, item.AppId))) Config.HiddenPins.Add(item.AppId);
+            }
+            else
+            {
+                Config.HiddenPins.RemoveAll(h => SameApp(h, item.AppId));
+                if (!_tray.TaskOrder.Any(o => o.IsPinned && SameApp(o.AppId, item.AppId)))
+                    Config.ExtraPins.Add(new ExtraPin { AppId = item.AppId, Name = item.ProgramName ?? item.Title, Path = item.ExePath });
+                Config.ShowPinnedPrograms = true;
+            }
+            Sync();
         }
 
         private void OnTrayChanged()
@@ -178,6 +233,8 @@ namespace AST
             _displayDebounce.Stop();
             _tracker.Dispose();
             _tray.Dispose();
+            // Never leave someone without a taskbar once AST has closed.
+            MainTaskbar.Release(Config);
             foreach (var bar in _bars.Values) bar.Close();
             _bars.Clear();
         }

@@ -198,13 +198,14 @@ namespace AST
 
         private static IntPtr FromWindow(IntPtr hwnd)
         {
-            foreach (int kind in new[] { 2, 1, 0 }) // ICON_SMALL2, ICON_BIG, ICON_SMALL
+            // Big first: a large icon scaled down stays sharp, where a small one scaled up looks soft.
+            foreach (int kind in new[] { 1, 2, 0 }) // ICON_BIG, ICON_SMALL2, ICON_SMALL
             {
                 if (Native.SendMessageTimeout(hwnd, Native.WM_GETICON, new IntPtr(kind), IntPtr.Zero, Native.SMTO_ABORTIFHUNG, 40, out IntPtr r) != IntPtr.Zero && r != IntPtr.Zero)
                     return r;
             }
-            IntPtr c = Native.GetClassLongPtr(hwnd, Native.GCLP_HICONSM);
-            return c != IntPtr.Zero ? c : Native.GetClassLongPtr(hwnd, Native.GCLP_HICON);
+            IntPtr c = Native.GetClassLongPtr(hwnd, Native.GCLP_HICON);
+            return c != IntPtr.Zero ? c : Native.GetClassLongPtr(hwnd, Native.GCLP_HICONSM);
         }
 
         /// <summary>Store apps run inside a host process, so their icon comes from the hosted child window's program.</summary>

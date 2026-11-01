@@ -55,7 +55,11 @@ namespace AST
         internal TaskItem(IntPtr handle)
         {
             Handle = handle;
-            Icon = WindowIcons.Get(handle);
+            AppId = PinnedPrograms.AppIdOfWindow(handle);
+            ExePath = PinnedPrograms.ExePathOfWindow(handle);
+            ProgramName = PinnedPrograms.ProgramName(ExePath);
+            // The app's own icon, as the Windows taskbar shows, rather than whatever this window reports.
+            Icon = PinnedPrograms.AppIcon(AppId) ?? PinnedPrograms.AppIcon(ExePath) ?? WindowIcons.Get(handle);
             ActivateCommand = new RelayCommand(Activate);
         }
 
@@ -63,6 +67,9 @@ namespace AST
         internal TaskItem(PinnedEntry pinned)
         {
             _pinned = pinned;
+            AppId = pinned.AppId;
+            ExePath = PinnedPrograms.ExePathOfPin(pinned);
+            ProgramName = pinned.Name;
             IsPinned = true;
             Title = pinned.Name;
             Icon = PinnedPrograms.IconFor(pinned);
@@ -70,6 +77,13 @@ namespace AST
         }
 
         private readonly PinnedEntry _pinned;
+
+        internal string AppId { get; }
+        internal string ExePath { get; }
+        internal string ProgramName { get; }
+
+        /// <summary>Starts another copy of the program, as clicking its name in the Windows taskbar's menu does.</summary>
+        internal void StartProgram() => PinnedPrograms.Launch(_pinned ?? new PinnedEntry { AppId = AppId, Shortcut = ExePath });
 
         /// <summary>True for a pinned program that isn't running, which has no window to show as active.</summary>
         public bool IsPinned { get; }
@@ -245,13 +259,58 @@ namespace AST
         /// <summary>Pinned programs sit at the start of the bar, ahead of open windows.</summary>
         internal void SetPinned(IEnumerable<PinnedEntry> pinned)
         {
-            var list = pinned.ToList();
+            _allPinned = pinned.ToList();
+            ShowPinned();
+        }
+
+        private List<PinnedEntry> _allPinned = new List<PinnedEntry>();
+
+        // A pin made in AST gives way to its window, as Windows' own pins already do.
+        private void ShowPinned()
+        {
+            var open = new HashSet<string>(Items.Where(i => !i.IsPinned && i.AppId != null).Select(i => i.AppId), StringComparer.OrdinalIgnoreCase);
+            var list = _allPinned.Where(p => !p.IsExtra || !open.Contains(p.AppId)).ToList();
             string signature = string.Join("\n", list.Select(p => p.AppId));
             if (signature == _pinnedSignature) return;
             _pinnedSignature = signature;
             for (int i = Items.Count - 1; i >= 0; i--)
                 if (Items[i].IsPinned) Items.RemoveAt(i);
             for (int i = 0; i < list.Count; i++) Items.Insert(i, new TaskItem(list[i]));
+            Reorder();
+        }
+
+        private IReadOnlyList<TaskOrderEntry> _order = new TaskOrderEntry[0];
+
+        internal void ApplyOrder(IReadOnlyList<TaskOrderEntry> order)
+        {
+            _order = order;
+            Reorder();
+        }
+
+        /// <summary>Follows the Windows taskbar's order. Programs it doesn't list stay at the end, in the order they opened.</summary>
+        private void Reorder()
+        {
+            var byId = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var byName = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < _order.Count; i++)
+            {
+                if (!byId.ContainsKey(_order[i].AppId)) byId[_order[i].AppId] = i;
+                if (!byName.ContainsKey(_order[i].Name)) byName[_order[i].Name] = i;
+            }
+            // Some programs, such as Chrome, set their id in a way only Windows can read, so fall back to the name.
+            int Rank(TaskItem item)
+            {
+                if (item.AppId != null && byId.TryGetValue(item.AppId, out int r)) return r;
+                if (item.ProgramName != null && byName.TryGetValue(item.ProgramName, out r)) return r;
+                return int.MaxValue;
+            }
+
+            var sorted = Items.OrderBy(Rank).ToList();
+            for (int i = 0; i < sorted.Count; i++)
+            {
+                int at = Items.IndexOf(sorted[i]);
+                if (at != i) Items.Move(at, i);
+            }
         }
 
         /// <summary>Applies a new window list, keeping existing items in place so buttons don't jump around.</summary>
@@ -264,6 +323,8 @@ namespace AST
             // Enumeration is newest-on-top, so reverse to add new windows at the end of the bar.
             foreach (var w in current.Values.Reverse())
                 if (!known.Contains(w.Handle)) Items.Add(new TaskItem(w.Handle));
+            ShowPinned();
+            Reorder();
             foreach (var item in Items.Where(i => !i.IsPinned))
             {
                 var w = current[item.Handle];

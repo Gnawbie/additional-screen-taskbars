@@ -30,6 +30,15 @@ namespace AST
         public int EffectiveThickness => Thickness > 0 ? Thickness : (IsVertical ? Config.DefaultVerticalThickness : Config.DefaultHorizontalThickness);
     }
 
+    /// <summary>A program pinned from AST's own menu. Windows doesn't let other programs add to its taskbar.</summary>
+    [DataContract]
+    public sealed class ExtraPin
+    {
+        [DataMember] public string AppId;
+        [DataMember] public string Name;
+        [DataMember] public string Path;
+    }
+
     [DataContract]
     public sealed class Config
     {
@@ -45,6 +54,13 @@ namespace AST
         [DataMember] public bool ShowProgramNames;
         /// <summary>Stops bars being moved or resized by dragging.</summary>
         [DataMember] public bool LockBars;
+        [DataMember] public List<ExtraPin> ExtraPins = new List<ExtraPin>();
+        /// <summary>Windows pins the user has removed from AST's bars. Windows' own taskbar isn't changed.</summary>
+        [DataMember] public List<string> HiddenPins = new List<string>();
+        /// <summary>True while the Windows taskbar is hidden, so a run after a crash knows there's something to restore.</summary>
+        [DataMember] public bool TaskbarIsReplaced;
+        /// <summary>The Windows taskbar's auto-hide state from before AST changed it.</summary>
+        [DataMember] public int SavedTaskbarState;
         /// <summary>Hiding for fullscreen programs is the default, and a value missing from an older config file reads as false.</summary>
         [DataMember] public bool KeepBarsOverFullscreen;
         /// <summary>Also lists the Windows taskbar's pinned programs that aren't running.</summary>
@@ -92,6 +108,8 @@ namespace AST
                         var c = (Config)new DataContractJsonSerializer(typeof(Config)).ReadObject(s);
                         c.Monitors = c.Monitors ?? new List<MonitorConfig>();
                         c.EnabledPlugins = c.EnabledPlugins ?? new List<string>();
+                        c.ExtraPins = c.ExtraPins ?? new List<ExtraPin>();
+                        c.HiddenPins = c.HiddenPins ?? new List<string>();
                         c.Theme = c.Theme ?? "modern";
                         return c;
                     }

@@ -25,12 +25,30 @@ namespace AST
             AppDomain.CurrentDomain.AssemblyResolve += (s, e) =>
                 new AssemblyName(e.Name).Name == "AST" ? Assembly.GetExecutingAssembly() : null;
 
+            if (args.Length == 2 && args[0] == "--guard" && int.TryParse(args[1], out int appProcessId))
+            {
+                MainTaskbar.RunGuard(appProcessId);
+                return 0;
+            }
+
             bool silent = args.Contains("--silent");
             if (args.Contains("--uninstall")) return Installer.Uninstall(silent);
             if (args.Contains("--install") || Installer.IsSetupName) return Installer.Install(silent);
             if (args.Contains("--quit"))
             {
                 StopRunningInstance();
+                return 0;
+            }
+            if (args.Contains("--restore-taskbar"))
+            {
+                // The way back if the Windows taskbar is ever left hidden. Also turns off the main screen's bar,
+                // since that bar is what hides the taskbar.
+                StopRunningInstance();
+                var saved = Config.Load();
+                foreach (var monitor in Monitors.Enumerate().Where(m => m.IsPrimary))
+                    saved.For(monitor).EdgeValue = BarEdge.Off;
+                MainTaskbar.Release(saved);
+                saved.Save();
                 return 0;
             }
 
@@ -79,9 +97,13 @@ namespace AST
         {
             var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
             app.DispatcherUnhandledException += OnUnhandled;
-            AppDomain.CurrentDomain.UnhandledException += (s, e) => Log.Write("Fatal: " + e.ExceptionObject);
-
             var config = Config.Load();
+            AppDomain.CurrentDomain.UnhandledException += (s, e) =>
+            {
+                Log.Write("Fatal: " + e.ExceptionObject);
+                MainTaskbar.Release(config);
+            };
+
             app.Startup += (s, e) =>
             {
                 _manager = new BarManager(config, ShowSettings);

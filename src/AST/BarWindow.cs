@@ -37,6 +37,10 @@ namespace AST
         public event Action LayoutDragged;
         /// <summary>Raised when the user flips "Lock taskbars" in the bar's right-click menu.</summary>
         public event Action LockToggled;
+        /// <summary>Raised when the user chooses "Pin to taskbar" or "Unpin from taskbar" for a program.</summary>
+        public event Action<TaskItem> PinToggled;
+        /// <summary>Tells the menu whether a program is pinned.</summary>
+        public Func<TaskItem, bool> IsItemPinned { get; set; }
         /// <summary>Raised when the user flips "Hide for fullscreen programs" in the right-click menu.</summary>
         public event Action HideForFullscreenToggled;
 
@@ -374,12 +378,7 @@ namespace AST
             var el = e.OriginalSource as FrameworkElement;
             if (el?.DataContext is TaskItem item)
             {
-                if (item.IsPinned) menu.Items.Add(Item("Open", item.Activate));
-                else
-                {
-                    menu.Items.Add(Item(item.IsActive ? "Minimize" : "Switch to", () => { if (item.IsActive) item.Minimize(); else item.Activate(); }));
-                    menu.Items.Add(Item("Close window", item.Close));
-                }
+                AddProgramItems(menu, item);
                 menu.Items.Add(new Separator());
             }
             var pages = (el?.DataContext as TrayItem)?.SettingsPages;
@@ -400,8 +399,29 @@ namespace AST
             e.Handled = true;
         }
 
+        // The options the Windows taskbar offers for a program, apart from its jump list of recent files.
+        private void AddProgramItems(ContextMenu menu, TaskItem item)
+        {
+            menu.Items.Add(Item(item.IsPinned ? "Open" : (item.ProgramName ?? item.Title), item.StartProgram));
+            if (item.ExePath != null)
+            {
+                menu.Items.Add(Item("Run as administrator", () => PinnedPrograms.RunAsAdministrator(item.ExePath)));
+                menu.Items.Add(Item("Open file location", () => PinnedPrograms.OpenFileLocation(item.ExePath)));
+            }
+            if (item.AppId != null)
+                menu.Items.Add(Item(IsItemPinned(item) ? "Unpin from taskbar" : "Pin to taskbar", () => PinToggled?.Invoke(item)));
+            if (item.IsPinned) return;
+            menu.Items.Add(new Separator());
+            menu.Items.Add(Item(item.IsActive ? "Minimize" : "Switch to", () => { if (item.IsActive) item.Minimize(); else item.Activate(); }));
+            menu.Items.Add(Item("Close window", item.Close));
+        }
+
         private void AddBarItems(ContextMenu menu)
         {
+            // The Windows taskbar's own options, then AST's.
+            menu.Items.Add(Item("Task Manager", () => TrayMirror.OpenSettingsPage("taskmgr.exe")));
+            menu.Items.Add(Item("Taskbar settings", () => TrayMirror.OpenSettingsPage("ms-settings:taskbar")));
+            menu.Items.Add(new Separator());
             var names = new MenuItem { Header = "Show program names", IsCheckable = true, IsChecked = !ViewModel.IconsOnly };
             names.Click += (s, a) => ProgramNamesToggled?.Invoke();
             menu.Items.Add(names);

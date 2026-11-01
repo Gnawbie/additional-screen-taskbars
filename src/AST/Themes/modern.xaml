@@ -29,12 +29,12 @@
           <Border x:Name="Back" Background="Transparent" CornerRadius="5" Margin="2">
             <Grid>
               <DockPanel Style="{StaticResource RotateTaskContent}">
-                <Image Source="{Binding Icon}" Width="20" Height="20" VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality" />
+                <Image Source="{Binding Icon}" Width="24" Height="24" VerticalAlignment="Center" SnapsToDevicePixels="True" RenderOptions.BitmapScalingMode="Fant" />
                 <TextBlock x:Name="Label" Text="{Binding Title}" Foreground="#F2F2F2" Margin="8,0,0,0" FontSize="12"
                            VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                            Visibility="{Binding DataContext.ShowLabels, RelativeSource={RelativeSource AncestorType=ItemsControl}, Converter={StaticResource BoolToVisible}}" />
               </DockPanel>
-              <Border x:Name="Marker" Height="2" Width="16" CornerRadius="1" Background="#8A8A8A" VerticalAlignment="Bottom" HorizontalAlignment="Center" />
+              <Border x:Name="Marker" Height="3" Width="6" CornerRadius="1.5" Background="#9A9A9A" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,1" />
             </Grid>
           </Border>
           <ControlTemplate.Triggers>
@@ -44,7 +44,12 @@
             <DataTrigger Binding="{Binding IsActive}" Value="True">
               <Setter TargetName="Back" Property="Background" Value="#33FFFFFF" />
               <Setter TargetName="Marker" Property="Background" Value="#60CDFF" />
-              <Setter TargetName="Marker" Property="Width" Value="28" />
+              <Setter TargetName="Marker" Property="Width" Value="16" />
+            </DataTrigger>
+            <!-- Without a name, a button is a neat square even on a wide side bar. -->
+            <DataTrigger Binding="{Binding DataContext.ShowLabels, RelativeSource={RelativeSource AncestorType=ItemsControl}}" Value="False">
+              <Setter TargetName="Back" Property="Width" Value="40" />
+              <Setter TargetName="Back" Property="HorizontalAlignment" Value="Center" />
             </DataTrigger>
             <DataTrigger Binding="{Binding IsMinimized}" Value="True">
               <Setter TargetName="Label" Property="Opacity" Value="0.65" />
@@ -123,14 +128,20 @@
       <DockPanel LastChildFill="True">
         <ContentControl Style="{StaticResource LeadingDock}" Focusable="False"
                         Visibility="{Binding ShowStartButton, Converter={StaticResource BoolToVisible}}">
-          <Button Style="{StaticResource FlatButton}" Command="{Binding StartCommand}" ToolTip="Start" MinHeight="30" MinWidth="36">
-            <Grid Width="16" Height="16">
+          <Button Style="{StaticResource FlatButton}" Command="{Binding StartCommand}" ToolTip="Start" MinHeight="44" MinWidth="44">
+            <Grid Width="24" Height="24">
+              <Grid.Resources>
+                <LinearGradientBrush x:Key="LogoBlue" StartPoint="0,0" EndPoint="1,1">
+                  <GradientStop Color="#6FE3FF" Offset="0" />
+                  <GradientStop Color="#0A8CE0" Offset="1" />
+                </LinearGradientBrush>
+              </Grid.Resources>
               <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition /></Grid.ColumnDefinitions>
               <Grid.RowDefinitions><RowDefinition /><RowDefinition /></Grid.RowDefinitions>
-              <Border Background="#60CDFF" Margin="0,0,1,1" />
-              <Border Background="#60CDFF" Margin="1,0,0,1" Grid.Column="1" />
-              <Border Background="#60CDFF" Margin="0,1,1,0" Grid.Row="1" />
-              <Border Background="#60CDFF" Margin="1,1,0,0" Grid.Row="1" Grid.Column="1" />
+              <Border Background="{StaticResource LogoBlue}" CornerRadius="1" Margin="0,0,1,1" />
+              <Border Background="{StaticResource LogoBlue}" CornerRadius="1" Margin="1,0,0,1" Grid.Column="1" />
+              <Border Background="{StaticResource LogoBlue}" CornerRadius="1" Margin="0,1,1,0" Grid.Row="1" />
+              <Border Background="{StaticResource LogoBlue}" CornerRadius="1" Margin="1,1,0,0" Grid.Row="1" Grid.Column="1" />
             </Grid>
           </Button>
         </ContentControl>

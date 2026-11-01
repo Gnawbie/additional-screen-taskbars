@@ -113,6 +113,8 @@ namespace AST
             try
             {
                 Program.StopRunningInstance();
+                // Covers a crash having left the Windows taskbar hidden, before the settings can be deleted.
+                MainTaskbar.Release(Config.Load());
                 StartsWithWindows = false;
                 if (File.Exists(ShortcutPath)) File.Delete(ShortcutPath);
                 Registry.CurrentUser.DeleteSubKey(UninstallKey, false);

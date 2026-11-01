@@ -52,6 +52,11 @@ namespace AST
         private bool _scanning;
 
         private string _pinnedSignature = "";
+        private string _orderSignature = "";
+
+        /// <summary>The app ids on the Windows taskbar, from first to last.</summary>
+        public List<TaskOrderEntry> TaskOrder { get; private set; } = new List<TaskOrderEntry>();
+        public event Action OrderChanged;
 
         public List<TrayEntry> Current { get; private set; } = new List<TrayEntry>();
         public List<PinnedEntry> Pinned { get; private set; } = new List<PinnedEntry>();
@@ -74,22 +79,31 @@ namespace AST
             {
                 var entries = new List<TrayEntry>();
                 var pinned = new List<PinnedEntry>();
-                try { Read(entries, pinned); }
+                var order = new List<TaskOrderEntry>();
+                try { Read(entries, pinned, order); }
                 catch (Exception ex)
                 {
                     // Expected while Explorer restarts. The next scan picks the buttons up again.
                     Log.Write("Tray scan failed: " + ex.Message);
                     entries.Clear();
                 }
-                _dispatcher.BeginInvoke(new Action(() => Publish(entries, pinned)));
+                _dispatcher.BeginInvoke(new Action(() => Publish(entries, pinned, order)));
             });
         }
 
-        private void Publish(List<TrayEntry> entries, List<PinnedEntry> pinned)
+        private void Publish(List<TrayEntry> entries, List<PinnedEntry> pinned, List<TaskOrderEntry> order)
         {
             _scanning = false;
             // An empty result is a passing state, such as Explorer restarting, so keep the buttons on show.
             if (entries.Count == 0) return;
+
+            string orderSignature = string.Join("\n", order.Select(o => o.AppId + "|" + o.IsPinned));
+            if (orderSignature != _orderSignature)
+            {
+                _orderSignature = orderSignature;
+                TaskOrder = order;
+                OrderChanged?.Invoke();
+            }
 
             string pinnedSignature = string.Join("\n", pinned.Select(p => p.AppId + "|" + p.Name));
             if (pinnedSignature != _pinnedSignature)
@@ -106,7 +120,7 @@ namespace AST
             Changed?.Invoke();
         }
 
-        private static void Read(List<TrayEntry> entries, List<PinnedEntry> pinned)
+        private static void Read(List<TrayEntry> entries, List<PinnedEntry> pinned, List<TaskOrderEntry> order)
         {
             IntPtr taskbar = Native.FindWindow("Shell_TrayWnd", null);
             if (taskbar == IntPtr.Zero) return;
@@ -119,10 +133,11 @@ namespace AST
                 .Where(e => e.Current.ClassName != ClockClass && e.Current.ClassName != ShowDesktopClass)
                 .OrderBy(e => e.Current.BoundingRectangle.X)
                 .Select(Describe));
-            pinned.AddRange(taskButtons
-                .OrderBy(e => e.Current.BoundingRectangle.X)
+            var inOrder = taskButtons.OrderBy(e => e.Current.BoundingRectangle.X).ToList();
+            pinned.AddRange(inOrder
                 .Select(e => PinnedPrograms.FromTaskbarButton(e.Current.Name, e.Current.AutomationId))
                 .Where(p => p != null));
+            order.AddRange(inOrder.Select(e => PinnedPrograms.OrderEntryFromButton(e.Current.Name, e.Current.AutomationId)).Where(o => o != null));
         }
 
         private static void Collect(AutomationElement parent, List<AutomationElement> trayButtons, List<AutomationElement> taskButtons, int depth)
