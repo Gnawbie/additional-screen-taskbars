@@ -2,7 +2,7 @@
 
 Windows 11 can't give each screen its own taskbar position. AST adds a separate taskbar to your other screens, and each screen can have its own setting.
 
-[![Download ASTSetup.exe](https://img.shields.io/badge/Download-ASTSetup.exe-2ea44f?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/Gnawbie/additional-screen-taskbars/releases/download/v0.1.1/ASTSetup.exe)
+[![Download ASTSetup.exe](https://img.shields.io/badge/Download-ASTSetup.exe-2ea44f?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/Gnawbie/additional-screen-taskbars/releases/download/v0.1.2/ASTSetup.exe)
 
 ![Two screens side by side: the Windows taskbar along the bottom of the main screen, and an AST taskbar down the left side of the second screen](docs/screenshot.png)
 
@@ -26,7 +26,7 @@ AST uses the documented Windows app bar API. It doesn't inject code into Explore
 
 ## Install
 
-Run `ASTSetup.exe`. It installs for the current user, needs no admin rights and uses the .NET Framework built into Windows 10 and 11.
+Run `ASTSetup.exe`. It installs for the current user, needs no admin rights and uses the .NET Framework built into Windows 10 and 11. AST starts with Windows by default, which you can turn off in Options.
 
 The exe isn't code-signed yet, so Windows SmartScreen may warn about it.
 

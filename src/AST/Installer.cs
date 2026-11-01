@@ -35,12 +35,25 @@ namespace AST
             }
             set
             {
-                using (var k = Registry.CurrentUser.CreateSubKey(RunKey))
+                if (value) SetStartup(CurrentExe);
+                else
                 {
-                    if (value) k.SetValue(AppName, "\"" + CurrentExe + "\"");
-                    else k.DeleteValue(AppName, false);
+                    using (var k = Registry.CurrentUser.CreateSubKey(RunKey))
+                        k.DeleteValue(AppName, false);
                 }
             }
+        }
+
+        private static void SetStartup(string exe)
+        {
+            using (var k = Registry.CurrentUser.CreateSubKey(RunKey))
+                k.SetValue(AppName, "\"" + exe + "\"");
+        }
+
+        private static bool IsFirstInstall()
+        {
+            using (var k = Registry.CurrentUser.OpenSubKey(UninstallKey))
+                return k == null;
         }
 
         /// <returns>The process exit code.</returns>
@@ -60,6 +73,8 @@ namespace AST
                     File.Copy(CurrentExe, InstalledExe, true);
 
                 CreateShortcut();
+                // Only on a first install, so an update never undoes someone turning this off.
+                if (IsFirstInstall()) SetStartup(InstalledExe);
                 using (var k = Registry.CurrentUser.CreateSubKey(UninstallKey))
                 {
                     k.SetValue("DisplayName", AppName);
