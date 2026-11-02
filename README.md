@@ -37,6 +37,18 @@ If the taskbar ever stays hidden, run:
 
 Restarting Explorer also brings it back, though it may stay on auto-hide until you run that command or change the setting in Settings > Personalization > Taskbar.
 
+## Start menu and volume slider
+
+These arrive in the next release, version 0.1.4.
+
+![AST's Start menu, with pinned programs above a search bar on the left and an alphabetical app list on the right](docs/start-menu.png)
+
+![AST's volume slider, with a mute button, the current level, and links to Sound settings and Volume mixer](docs/volume-slider.png)
+
+## Known bugs
+
+- **Starting with Windows:** AST may not start after a restart, or may take over a minute to appear after you sign in. We're working on a fix. Until then, start it from the desktop shortcut or the Start menu. If you've replaced the Windows taskbar, it may also stay on auto-hide until AST starts.
+
 ## Install
 
 Run `ASTSetup.exe`. It installs for the current user, needs no admin rights and uses the .NET Framework built into Windows 10 and 11. AST starts with Windows by default, which you can turn off in Options.
