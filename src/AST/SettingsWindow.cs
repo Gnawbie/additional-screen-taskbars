@@ -43,6 +43,12 @@ namespace AST
             root.Children.Add(Check("Show clock", _config.ShowClock, v => { _config.ShowClock = v; _manager.Sync(); }));
             root.Children.Add(Check("Show Start button", _config.ShowStartButton, v => { _config.ShowStartButton = v; _manager.Sync(); }));
 
+            root.Children.Add(Heading("Start menu"));
+            root.Children.Add(Check("Use AST's Start menu on the Start button", _config.UseAstStartMenu, v => { _config.UseAstStartMenu = v; _manager.Sync(); }));
+            root.Children.Add(Check("Also open it with the Windows key", _config.StartMenuUsesWindowsKey, v => { _config.StartMenuUsesWindowsKey = v; _manager.Sync(); }));
+            root.Children.Add(Check("Keep the Windows key working in fullscreen programs", _config.StartMenuKeyInFullscreen, v => { _config.StartMenuKeyInFullscreen = v; _manager.Sync(); }));
+            root.Children.Add(Note("The Windows key option watches your keyboard, which anti-cheat software can object to, so it normally turns off while a fullscreen program is running and Windows' Start menu opens instead. Keeping it working means it also watches your keyboard during games, so leave this off for games with strict anti-cheat."));
+
             root.Children.Add(Heading("Mods"));
             root.Children.Add(Note("Third-party themes and plugins can run code on your PC, just like any program you install. Only add ones you trust."));
             var folders = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 6) };
@@ -59,6 +65,13 @@ namespace AST
 
             root.Children.Add(Heading("Startup"));
             root.Children.Add(Check("Start AST with Windows", Installer.StartsWithWindows, v => Installer.StartsWithWindows = v));
+
+            root.Children.Add(Heading("Speed test"));
+            root.Children.Add(SpeedTestRow());
+            root.Children.Add(Note("Right-click the network icon on a bar to run this in your browser."));
+
+            root.Children.Add(Heading("Updates"));
+            root.Children.Add(UpdateRow());
 
             Content = new ScrollViewer { Content = root, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         }
@@ -166,6 +179,61 @@ namespace AST
             };
             row.Children.Add(new TextBlock { Text = "Theme", Width = 60, VerticalAlignment = VerticalAlignment.Center });
             row.Children.Add(combo);
+            return row;
+        }
+
+        private UIElement SpeedTestRow()
+        {
+            var row = new DockPanel { Margin = new Thickness(0, 4, 0, 6) };
+            var combo = new ComboBox { ItemsSource = SpeedTests.All, DisplayMemberPath = nameof(SpeedTest.Name), SelectedItem = SpeedTests.Find(_config.SpeedTestSite), MinWidth = 240, HorizontalAlignment = HorizontalAlignment.Left };
+            combo.SelectionChanged += (s, e) =>
+            {
+                _config.SpeedTestSite = ((SpeedTest)combo.SelectedItem).Id;
+                _manager.Sync();
+            };
+            row.Children.Add(new TextBlock { Text = "Site", Width = 60, VerticalAlignment = VerticalAlignment.Center });
+            row.Children.Add(combo);
+            return row;
+        }
+
+        private UIElement UpdateRow()
+        {
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 0) };
+            var button = new Button { Content = "Update to latest version", Padding = new Thickness(10, 3, 10, 3) };
+            var status = new TextBlock { Text = "You have version " + Installer.Version + ".", Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+            button.Click += async (s, e) =>
+            {
+                button.IsEnabled = false;
+                try
+                {
+                    status.Text = "Checking for a new version...";
+                    var update = await Updater.FindLatestAsync();
+                    if (!Updater.IsNewer(update))
+                    {
+                        status.Text = "You have the latest version, " + Installer.Version + ".";
+                        return;
+                    }
+                    var answer = MessageBox.Show(this, "Update AST from " + Installer.Version + " to " + update.Version + "?\n\nAST will close and start again, and your settings will stay as they are.",
+                        "Update AST", MessageBoxButton.OKCancel, MessageBoxImage.Question);
+                    if (answer != MessageBoxResult.OK)
+                    {
+                        status.Text = "Version " + update.Version + " is available.";
+                        return;
+                    }
+                    status.Text = "Downloading version " + update.Version + "...";
+                    string setup = await Updater.DownloadAsync(update);
+                    status.Text = "Installing...";
+                    Updater.Install(setup);
+                }
+                catch (Exception ex)
+                {
+                    Log.Write("Update failed: " + ex);
+                    status.Text = "Could not update: " + ex.Message;
+                }
+                finally { button.IsEnabled = true; }
+            };
+            row.Children.Add(button);
+            row.Children.Add(status);
             return row;
         }
 

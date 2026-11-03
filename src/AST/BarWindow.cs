@@ -71,6 +71,9 @@ namespace AST
         /// <summary>Raised when the user flips "Show program names" in the bar's right-click menu.</summary>
         public event Action ProgramNamesToggled;
 
+        /// <summary>Where the bar is docked, so its Start menu can open next to it.</summary>
+        internal Native.RECT DockedRect => _docked;
+
         public MonitorInfo Monitor { get; private set; }
         public MonitorConfig Settings { get; private set; }
         public BarViewModel ViewModel { get; }
@@ -322,6 +325,9 @@ namespace AST
             {
                 Native.ShowWindow(_hwnd, Native.SW_SHOWNOACTIVATE);
                 Native.SetWindowPos(_hwnd, Native.HWND_TOPMOST, 0, 0, 0, 0, Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE);
+                // WPF doesn't know the window was hidden, so it would only repaint what has changed since.
+                _root.InvalidateVisual();
+                Native.RedrawWindow(_hwnd, IntPtr.Zero, IntPtr.Zero, Native.RDW_INVALIDATE | Native.RDW_ALLCHILDREN | Native.RDW_UPDATENOW);
             }
         }
 
@@ -374,8 +380,22 @@ namespace AST
         // Handled here rather than in themes, so every theme and plugin gets working menus for free.
         private void OnRightClick(object sender, MouseButtonEventArgs e)
         {
-            var menu = new ContextMenu();
+            if (IsOnStartButton(e.OriginalSource as DependencyObject))
+            {
+                ViewModel.OpenStartMenuOptions();
+                e.Handled = true;
+                return;
+            }
+
             var el = e.OriginalSource as FrameworkElement;
+            if ((el?.DataContext as TrayItem)?.Kind == TrayKind.Volume)
+            {
+                new VolumeWindow(Monitor, ThemeId == "classic").Show();
+                e.Handled = true;
+                return;
+            }
+
+            var menu = new ContextMenu();
             if (el?.DataContext is TaskItem item)
             {
                 AddProgramItems(menu, item);
@@ -400,6 +420,17 @@ namespace AST
         }
 
         // The options the Windows taskbar offers for a program, apart from its jump list of recent files.
+        /// <summary>Finds the Start button by its command, so this works in every theme and plugin that uses it.</summary>
+        private bool IsOnStartButton(DependencyObject element)
+        {
+            for (var e = element; e != null; e = VisualTreeHelper.GetParent(e))
+            {
+                if (e is ButtonBase button && button.Command == ViewModel.StartCommand) return true;
+                if (!(e is Visual)) return false;
+            }
+            return false;
+        }
+
         private void AddProgramItems(ContextMenu menu, TaskItem item)
         {
             menu.Items.Add(Item(item.IsPinned ? "Open" : (item.ProgramName ?? item.Title), item.StartProgram));
@@ -419,6 +450,7 @@ namespace AST
         private void AddBarItems(ContextMenu menu)
         {
             // The Windows taskbar's own options, then AST's.
+            menu.Items.Add(Item("Show desktop", TrayMirror.ToggleDesktop));
             menu.Items.Add(Item("Task Manager", () => TrayMirror.OpenSettingsPage("taskmgr.exe")));
             menu.Items.Add(Item("Taskbar settings", () => TrayMirror.OpenSettingsPage("ms-settings:taskbar")));
             menu.Items.Add(new Separator());

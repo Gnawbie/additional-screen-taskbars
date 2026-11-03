@@ -56,10 +56,19 @@ namespace AST
         {
             Handle = handle;
             AppId = PinnedPrograms.AppIdOfWindow(handle);
-            ExePath = PinnedPrograms.ExePathOfWindow(handle);
-            ProgramName = PinnedPrograms.ProgramName(ExePath);
-            // The app's own icon, as the Windows taskbar shows, rather than whatever this window reports.
-            Icon = PinnedPrograms.AppIcon(AppId) ?? PinnedPrograms.AppIcon(ExePath) ?? WindowIcons.Get(handle);
+            _exePath = PinnedPrograms.ExePathOfWindow(handle);
+            string appId = AppId, exePath = _exePath;
+            BackgroundReader.Read(() => new
+            {
+                Name = PinnedPrograms.ProgramName(exePath),
+                // The app's own icon, as the Windows taskbar shows, rather than whatever this window reports.
+                Icon = PinnedPrograms.AppIcon(appId) ?? PinnedPrograms.AppIcon(exePath) ?? WindowIcons.Get(handle),
+            }, details =>
+            {
+                ProgramName = details.Name;
+                Icon = details.Icon;
+                DetailsRead?.Invoke();
+            });
             ActivateCommand = new RelayCommand(Activate);
         }
 
@@ -68,19 +77,38 @@ namespace AST
         {
             _pinned = pinned;
             AppId = pinned.AppId;
-            ExePath = PinnedPrograms.ExePathOfPin(pinned);
             ProgramName = pinned.Name;
             IsPinned = true;
             Title = pinned.Name;
-            Icon = PinnedPrograms.IconFor(pinned);
+            BackgroundReader.Read(() => PinnedPrograms.IconFor(pinned), icon => Icon = icon);
             ActivateCommand = new RelayCommand(Activate);
         }
 
         private readonly PinnedEntry _pinned;
+        private string _exePath;
+        private bool _exePathKnown;
+        private ImageSource _icon;
+
+        /// <summary>Raised on a window's button once its program name is known, which can change where it belongs.</summary>
+        internal event Action DetailsRead;
 
         internal string AppId { get; }
-        internal string ExePath { get; }
-        internal string ProgramName { get; }
+
+        /// <summary>Finding a pin's program can mean reading its shortcut, so that waits until something asks.</summary>
+        internal string ExePath
+        {
+            get
+            {
+                if (_pinned != null && !_exePathKnown)
+                {
+                    _exePath = PinnedPrograms.ExePathOfPin(_pinned);
+                    _exePathKnown = true;
+                }
+                return _exePath;
+            }
+        }
+
+        internal string ProgramName { get; private set; }
 
         /// <summary>Starts another copy of the program, as clicking its name in the Windows taskbar's menu does.</summary>
         internal void StartProgram() => PinnedPrograms.Launch(_pinned ?? new PinnedEntry { AppId = AppId, Shortcut = ExePath });
@@ -88,7 +116,8 @@ namespace AST
         /// <summary>True for a pinned program that isn't running, which has no window to show as active.</summary>
         public bool IsPinned { get; }
         public IntPtr Handle { get; }
-        public ImageSource Icon { get; }
+        /// <summary>Null for a moment while a new button's icon is read.</summary>
+        public ImageSource Icon { get => _icon; private set => Set(ref _icon, value); }
         public string Title { get => _title; internal set => Set(ref _title, value); }
         public bool IsActive { get => _isActive; internal set => Set(ref _isActive, value); }
         public bool IsMinimized { get => _isMinimized; internal set => Set(ref _isMinimized, value); }
@@ -121,11 +150,14 @@ namespace AST
     {
         internal TrayItem(TrayEntry entry, BarViewModel bar)
         {
+            _bar = bar;
             Name = entry.Name;
             Glyph = entry.Glyph;
             Kind = entry.Kind;
             InvokeCommand = new RelayCommand(() => TrayMirror.Press(entry, () => bar.Monitor, () => bar.Edge));
         }
+
+        private readonly BarViewModel _bar;
 
         internal TrayKind Kind { get; }
 
@@ -143,7 +175,11 @@ namespace AST
                             new KeyValuePair<string, string>("Volume mixer", "ms-settings:apps-volume"),
                         };
                     case TrayKind.Network:
-                        return new[] { new KeyValuePair<string, string>("Network and internet settings", "ms-settings:network") };
+                        return new[]
+                        {
+                            new KeyValuePair<string, string>("Speed test", _bar.SpeedTestUrl),
+                            new KeyValuePair<string, string>("Network and internet settings", "ms-settings:network"),
+                        };
                     case TrayKind.Notifications:
                         return new[] { new KeyValuePair<string, string>("Notification settings", "ms-settings:notifications") };
                     default:
@@ -188,6 +224,8 @@ namespace AST
 
         private bool _showTray;
         public bool ShowTray { get => _showTray; internal set => Set(ref _showTray, value); }
+
+        internal string SpeedTestUrl { get; set; }
 
         internal void UpdateTray(IEnumerable<TrayEntry> entries)
         {
@@ -246,8 +284,16 @@ namespace AST
             ShowLabels = !_iconsOnly && (!vertical || RotateLabels || _thickness >= 90);
         }
 
-        private static void OpenStart()
+        /// <summary>When set, the Start button opens AST's own menu instead of the Windows one.</summary>
+        internal Action StartOverride { get; set; }
+
+        private void OpenStart()
         {
+            if (StartOverride != null)
+            {
+                StartOverride();
+                return;
+            }
             Native.keybd_event(Native.VK_CONTROL, 0, 0, UIntPtr.Zero);
             Native.keybd_event(Native.VK_ESCAPE, 0, 0, UIntPtr.Zero);
             Native.keybd_event(Native.VK_ESCAPE, 0, Native.KEYEVENTF_KEYUP, UIntPtr.Zero);
@@ -313,6 +359,15 @@ namespace AST
             }
         }
 
+        /// <summary>Opens the Windows menu with Device Manager, Task Manager and shut down, using its Win+X shortcut.</summary>
+        internal void OpenStartMenuOptions()
+        {
+            Native.keybd_event(Native.VK_LWIN, 0, 0, UIntPtr.Zero);
+            Native.keybd_event(Native.VK_X, 0, 0, UIntPtr.Zero);
+            Native.keybd_event(Native.VK_X, 0, Native.KEYEVENTF_KEYUP, UIntPtr.Zero);
+            Native.keybd_event(Native.VK_LWIN, 0, Native.KEYEVENTF_KEYUP, UIntPtr.Zero);
+        }
+
         /// <summary>Applies a new window list, keeping existing items in place so buttons don't jump around.</summary>
         internal void Update(IEnumerable<TrackedWindow> windows)
         {
@@ -322,7 +377,12 @@ namespace AST
             var known = new HashSet<IntPtr>(Items.Select(i => i.Handle));
             // Enumeration is newest-on-top, so reverse to add new windows at the end of the bar.
             foreach (var w in current.Values.Reverse())
-                if (!known.Contains(w.Handle)) Items.Add(new TaskItem(w.Handle));
+                if (!known.Contains(w.Handle))
+                {
+                    var item = new TaskItem(w.Handle);
+                    item.DetailsRead += Reorder;
+                    Items.Add(item);
+                }
             ShowPinned();
             Reorder();
             foreach (var item in Items.Where(i => !i.IsPinned))

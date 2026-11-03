@@ -17,6 +17,9 @@ namespace AST
         private readonly Action _showSettings;
         private List<MonitorInfo> _monitors = new List<MonitorInfo>();
         private bool _replacingTaskbar;
+        private StartMenuWindow _startMenu;
+        private readonly StartKeyHook _startKey;
+        private StartMenuWindow StartMenu => _startMenu ?? (_startMenu = new StartMenuWindow(Config, DefaultStartTiles));
 
         public Config Config { get; }
         public ThemeManager Themes { get; }
@@ -30,6 +33,7 @@ namespace AST
             Config = config;
             Themes = new ThemeManager(config);
             _showSettings = showSettings;
+            _startKey = new StartKeyHook(OpenStartMenuFromKey);
             _tracker.Changed += OnWindowsChanged;
             _tray.Changed += OnTrayChanged;
             _tray.PinnedChanged += ApplyPinned;
@@ -114,8 +118,11 @@ namespace AST
                 bar.IsLocked = Config.LockBars;
                 bar.ShowsAllScreens = !Config.OwnScreenProgramsOnly;
                 bar.ViewModel.ShowTray = !Config.HideTrayButtons;
+                bar.ViewModel.SpeedTestUrl = SpeedTests.Find(Config.SpeedTestSite).Url;
                 bar.ShowsPinned = Config.ShowPinnedPrograms;
                 bar.HidesForFullscreen = !Config.KeepBarsOverFullscreen;
+                var thisBar = bar;
+                bar.ViewModel.StartOverride = Config.UseAstStartMenu ? () => ToggleStartMenu(thisBar) : (Action)null;
             }
             foreach (var id in _bars.Keys.Where(k => !wanted.Contains(k)).ToList())
             {
@@ -124,12 +131,15 @@ namespace AST
             }
             // A bar on the main screen takes the place of the Windows taskbar, which would otherwise sit alongside it.
             _replacingTaskbar = _monitors.Any(m => m.IsPrimary && Config.For(m).EdgeValue != BarEdge.Off);
-            if (_replacingTaskbar) MainTaskbar.Engage(Config);
+            if (_replacingTaskbar) KeepTaskbarReplaced();
             else MainTaskbar.Release(Config);
             Config.Save();
             TickClock();
             ApplyPinned();
             ApplyOrder();
+            // Reads the app list ahead of time, so the first open isn't an empty menu.
+            if (Config.UseAstStartMenu) StartMenu.Refresh();
+            else if (_startMenu != null && _startMenu.IsVisible) _startMenu.Hide();
             _tracker.Refresh();
         }
 
@@ -143,15 +153,76 @@ namespace AST
         /// <summary>Called when a third-party look throws while running: switches every bar to the built-in theme.</summary>
         public void FallBackToBuiltInTheme()
         {
-            if (Config.Theme == ThemeManager.FallbackThemeId) return;
+            // Built-in themes are left alone, because an error elsewhere in AST says nothing about them.
+            if (Config.Theme == ThemeManager.FallbackThemeId || Config.Theme == "classic") return;
             Log.Write("Switching to the built-in theme after an error in " + Config.Theme);
             Config.Theme = ThemeManager.FallbackThemeId;
             Sync();
         }
 
+        public void ReleaseTaskbar() => MainTaskbar.Release(Config);
+
+        private IntPtr _knownTaskbar;
+        private DateTime _knownTaskbarSince;
+        private bool _taskbarReady;
+
+        /// <summary>
+        /// Runs often, and copes with the taskbar not existing yet at sign-in or being replaced when Explorer
+        /// restarts. A new taskbar gets time to build its buttons, but not forever, because until then the Windows
+        /// taskbar's reserved space stays reserved.
+        /// </summary>
+        private void KeepTaskbarReplaced()
+        {
+            IntPtr taskbar = MainTaskbar.TaskbarHandle;
+            if (taskbar == IntPtr.Zero) return;
+            if (taskbar != _knownTaskbar)
+            {
+                _knownTaskbar = taskbar;
+                _knownTaskbarSince = DateTime.Now;
+                _taskbarReady = false;
+            }
+            if (!_taskbarReady && (_tray.LastScanFoundButtons || DateTime.Now - _knownTaskbarSince > TaskbarBuildLimit))
+            {
+                _taskbarReady = true;
+                Log.Write(_tray.LastScanFoundButtons ? "Windows taskbar's buttons were read" : "Gave up waiting for the Windows taskbar's buttons");
+            }
+            MainTaskbar.Engage(Config, _taskbarReady);
+        }
+
+        private static readonly TimeSpan TaskbarBuildLimit = TimeSpan.FromSeconds(30);
+
+        private void ToggleStartMenu(BarWindow bar)
+        {
+            if (StartMenu.IsVisible) StartMenu.Hide();
+            else if (!StartMenu.JustClosed) StartMenu.ShowAt(bar.DockedRect, bar.Settings.EdgeValue, bar.Monitor);
+        }
+
+        /// <summary>Opens on the screen you're working on, or the first bar if that screen doesn't have one.</summary>
+        private void OpenStartMenuFromKey()
+        {
+            if (StartMenu.IsVisible)
+            {
+                StartMenu.Hide();
+                return;
+            }
+            IntPtr active = Native.MonitorFromWindow(Native.GetForegroundWindow(), Native.MONITOR_DEFAULTTONEAREST);
+            var bar = _bars.Values.FirstOrDefault(b => b.Monitor.Handle == active) ?? _bars.Values.FirstOrDefault();
+            if (bar != null) ToggleStartMenu(bar);
+        }
+
+        /// <summary>The first tiles are what's pinned to the Windows taskbar, leaving out any whose program has gone.</summary>
+        private IEnumerable<StartTile> DefaultStartTiles() =>
+            _tray.TaskOrder
+                .Where(o => o.IsPinned && PinnedPrograms.AppIcon(o.AppId) != null)
+                .Select(o => new StartTile { AppId = o.AppId, Name = o.Name, Size = 2 })
+                .ToList();
+
         private void OnWindowsChanged(List<TrackedWindow> windows)
         {
-            if (_replacingTaskbar) MainTaskbar.KeepHidden();
+            // Unless asked to, never watch the keyboard alongside a fullscreen program, such as a game with anti-cheat.
+            _startKey.SetEnabled(Config.UseAstStartMenu && Config.StartMenuUsesWindowsKey
+                && (Config.StartMenuKeyInFullscreen || !_monitors.Any(m => WindowTracker.IsFullscreenOn(m, windows))));
+            if (_replacingTaskbar) KeepTaskbarReplaced();
             foreach (var bar in _bars.Values)
             {
                 bar.SetFullscreenHidden(!Config.KeepBarsOverFullscreen && WindowTracker.IsFullscreenOn(bar.Monitor, windows));
@@ -231,6 +302,7 @@ namespace AST
             SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
             _clock.Stop();
             _displayDebounce.Stop();
+            _startKey.Dispose();
             _tracker.Dispose();
             _tray.Dispose();
             // Never leave someone without a taskbar once AST has closed.

@@ -60,6 +60,7 @@ namespace AST
 
         public List<TrayEntry> Current { get; private set; } = new List<TrayEntry>();
         public List<PinnedEntry> Pinned { get; private set; } = new List<PinnedEntry>();
+        public bool LastScanFoundButtons { get; private set; }
         public event Action Changed;
         public event Action PinnedChanged;
 
@@ -94,23 +95,29 @@ namespace AST
         private void Publish(List<TrayEntry> entries, List<PinnedEntry> pinned, List<TaskOrderEntry> order)
         {
             _scanning = false;
+            LastScanFoundButtons = order.Count > 0;
             // An empty result is a passing state, such as Explorer restarting, so keep the buttons on show.
             if (entries.Count == 0) return;
 
-            string orderSignature = string.Join("\n", order.Select(o => o.AppId + "|" + o.IsPinned));
-            if (orderSignature != _orderSignature)
+            // The same goes for the program buttons, which can be missing for a moment when the tray's aren't, such
+            // as just after signing in. An empty list here would otherwise wipe the pins from the bars.
+            if (order.Count > 0)
             {
-                _orderSignature = orderSignature;
-                TaskOrder = order;
-                OrderChanged?.Invoke();
-            }
+                string orderSignature = string.Join("\n", order.Select(o => o.AppId + "|" + o.IsPinned));
+                if (orderSignature != _orderSignature)
+                {
+                    _orderSignature = orderSignature;
+                    TaskOrder = order;
+                    OrderChanged?.Invoke();
+                }
 
-            string pinnedSignature = string.Join("\n", pinned.Select(p => p.AppId + "|" + p.Name));
-            if (pinnedSignature != _pinnedSignature)
-            {
-                _pinnedSignature = pinnedSignature;
-                Pinned = pinned;
-                PinnedChanged?.Invoke();
+                string pinnedSignature = string.Join("\n", pinned.Select(p => p.AppId + "|" + p.Name));
+                if (pinnedSignature != _pinnedSignature)
+                {
+                    _pinnedSignature = pinnedSignature;
+                    Pinned = pinned;
+                    PinnedChanged?.Invoke();
+                }
             }
 
             string signature = string.Join("\n", entries.Select(e => e.Glyph + e.Name));
@@ -130,7 +137,8 @@ namespace AST
             var taskButtons = new List<AutomationElement>();
             Collect(AutomationElement.FromHandle(taskbar), trayButtons, taskButtons, 0);
             entries.AddRange(trayButtons
-                .Where(e => e.Current.ClassName != ClockClass && e.Current.ClassName != ShowDesktopClass)
+                // The clock's class varies, so also check its name. AST's bars have their own clock.
+                .Where(e => e.Current.ClassName != ClockClass && e.Current.ClassName != ShowDesktopClass && !e.Current.Name.StartsWith("Clock"))
                 .OrderBy(e => e.Current.BoundingRectangle.X)
                 .Select(Describe));
             var inOrder = taskButtons.OrderBy(e => e.Current.BoundingRectangle.X).ToList();
@@ -165,6 +173,8 @@ namespace AST
                 entry.Kind = TrayKind.HiddenIcons;
                 entry.Glyph = GlyphChevron;
             }
+            // Before the class checks, because a microphone-in-use button can share the volume button's class.
+            else if (n.Contains("microphone")) entry.Glyph = GlyphMic;
             else if (n.StartsWith("network") || className == NetworkClass)
             {
                 entry.Kind = TrayKind.Network;
@@ -182,7 +192,6 @@ namespace AST
                 entry.Glyph = GlyphBell;
             }
             else if (n.StartsWith("battery")) entry.Glyph = GlyphBattery;
-            else if (n.Contains("microphone")) entry.Glyph = GlyphMic;
             else if (n.Contains("bluetooth")) entry.Glyph = GlyphBluetooth;
             return entry;
         }
@@ -245,6 +254,17 @@ namespace AST
         {
             try { Process.Start(uri); }
             catch (Exception ex) { Log.Write("Could not open " + uri + ": " + ex.Message); }
+        }
+
+        /// <summary>The same as Win+D: shows the desktop, and using it again brings the windows back.</summary>
+        public static void ToggleDesktop()
+        {
+            try
+            {
+                dynamic shell = Activator.CreateInstance(Type.GetTypeFromProgID("Shell.Application"));
+                shell.ToggleDesktop();
+            }
+            catch (Exception ex) { Log.Write("Could not show the desktop: " + ex.Message); }
         }
 
         public void Dispose() => _timer.Stop();

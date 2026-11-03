@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
@@ -33,6 +34,7 @@ namespace AST
 
             bool silent = args.Contains("--silent");
             if (args.Contains("--uninstall")) return Installer.Uninstall(silent);
+            if (args.Contains("--update")) return Installer.Install(silent, confirm: false);
             if (args.Contains("--install") || Installer.IsSetupName) return Installer.Install(silent);
             if (args.Contains("--quit"))
             {
@@ -95,9 +97,17 @@ namespace AST
 
         private static void RunApp(string[] args)
         {
+            Log.Write("AST " + Installer.Version + " started");
             var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+            // Windows may end AST before it closes normally. Auto-hide is a saved setting, so restore it first.
+            app.SessionEnding += (s, e) =>
+            {
+                Log.Write("Windows is signing out or shutting down");
+                _manager?.ReleaseTaskbar();
+            };
             app.DispatcherUnhandledException += OnUnhandled;
             var config = Config.Load();
+            Log.Write("Loaded settings: show pinned programs " + (config.ShowPinnedPrograms ? "on" : "off"));
             AppDomain.CurrentDomain.UnhandledException += (s, e) =>
             {
                 Log.Write("Fatal: " + e.ExceptionObject);
@@ -106,14 +116,17 @@ namespace AST
 
             app.Startup += (s, e) =>
             {
+                UiWatchdog.Start(app.Dispatcher, Thread.CurrentThread);
                 _manager = new BarManager(config, ShowSettings);
                 _manager.Sync();
+                Log.Write("Bars ready, " + (int)(DateTime.Now - Process.GetCurrentProcess().StartTime).TotalSeconds + " seconds after starting");
                 CreateTray();
                 WatchSignals(app);
                 if (args.Contains("--settings")) ShowSettings();
             };
             app.Exit += (s, e) =>
             {
+                Log.Write("AST closed");
                 _manager?.Dispose();
                 if (_tray != null) { _tray.Visible = false; _tray.Dispose(); }
             };

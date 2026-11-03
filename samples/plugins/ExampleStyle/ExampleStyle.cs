@@ -35,6 +35,7 @@ namespace ExampleStyle
 
         private static Button Block(TaskItem item)
         {
+            var icon = new Image { Source = item.Icon, Width = 20, Height = 20 };
             var block = new Button
             {
                 DataContext = item,
@@ -43,9 +44,14 @@ namespace ExampleStyle
                 Margin = new Thickness(2),
                 Focusable = false,
                 Background = Brush(item),
-                Content = new Image { Source = item.Icon, Width = 20, Height = 20 },
+                Content = icon,
             };
-            item.PropertyChanged += (s, e) => block.Background = Brush(item);
+            // A new item's icon arrives shortly after the item does.
+            item.PropertyChanged += (s, e) =>
+            {
+                block.Background = Brush(item);
+                icon.Source = item.Icon;
+            };
             return block;
         }
 

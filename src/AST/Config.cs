@@ -39,6 +39,15 @@ namespace AST
         [DataMember] public string Path;
     }
 
+    /// <summary>A program pinned in AST's Start menu. Size is only left over from the earlier tiles.</summary>
+    [DataContract]
+    public sealed class StartTile
+    {
+        [DataMember] public string AppId;
+        [DataMember] public string Name;
+        [DataMember] public int Size;
+    }
+
     [DataContract]
     public sealed class Config
     {
@@ -54,6 +63,22 @@ namespace AST
         [DataMember] public bool ShowProgramNames;
         /// <summary>Stops bars being moved or resized by dragging.</summary>
         [DataMember] public bool LockBars;
+        /// <summary>Makes AST's Start button open AST's Windows 10 style menu instead of the Windows one.</summary>
+        [DataMember] public bool UseAstStartMenu;
+        /// <summary>Also opens that menu from the Windows key. This watches the keyboard, so it's a separate choice.</summary>
+        [DataMember] public bool StartMenuUsesWindowsKey;
+        /// <summary>Keeps watching the Windows key during fullscreen programs, despite the anti-cheat risk.</summary>
+        [DataMember] public bool StartMenuKeyInFullscreen;
+        /// <summary>The site the network icon's Speed test item opens. See SpeedTests.</summary>
+        [DataMember] public string SpeedTestSite;
+        [DataMember] public List<StartTile> StartTiles = new List<StartTile>();
+        /// <summary>Programs pinned in the Start menu's left column, above the search bar.</summary>
+        [DataMember] public List<StartTile> StartPins = new List<StartTile>();
+        /// <summary>Only read once, to carry over tiles from before the menu had a pinned list instead.</summary>
+        [DataMember] public bool StartTilesSetUp;
+        /// <summary>True once the first pins have been filled in, so removing them all doesn't bring them back.</summary>
+        [DataMember] public bool StartPinsSetUp;
+        [DataMember] public bool DesktopShortcutMade;
         [DataMember] public List<ExtraPin> ExtraPins = new List<ExtraPin>();
         /// <summary>Windows pins the user has removed from AST's bars. Windows' own taskbar isn't changed.</summary>
         [DataMember] public List<string> HiddenPins = new List<string>();
@@ -109,6 +134,8 @@ namespace AST
                         c.Monitors = c.Monitors ?? new List<MonitorConfig>();
                         c.EnabledPlugins = c.EnabledPlugins ?? new List<string>();
                         c.ExtraPins = c.ExtraPins ?? new List<ExtraPin>();
+                        c.StartTiles = c.StartTiles ?? new List<StartTile>();
+                        c.StartPins = c.StartPins ?? new List<StartTile>();
                         c.HiddenPins = c.HiddenPins ?? new List<string>();
                         c.Theme = c.Theme ?? "modern";
                         return c;
@@ -119,17 +146,28 @@ namespace AST
             return new Config();
         }
 
+        private byte[] _lastSaved;
+
+        /// <summary>This runs on the bars' thread and often changes nothing, so it leaves a possibly slow disk alone then.</summary>
         public void Save()
         {
             try
             {
+                byte[] json;
+                using (var s = new MemoryStream())
+                {
+                    using (var w = JsonReaderWriterFactory.CreateJsonWriter(s, Encoding.UTF8, false, true))
+                        new DataContractJsonSerializer(typeof(Config)).WriteObject(w, this);
+                    json = s.ToArray();
+                }
+                if (_lastSaved != null && json.SequenceEqual(_lastSaved)) return;
+
                 Directory.CreateDirectory(DataDir);
                 string tmp = FilePath + ".tmp";
-                using (var s = File.Create(tmp))
-                using (var w = JsonReaderWriterFactory.CreateJsonWriter(s, Encoding.UTF8, false, true))
-                    new DataContractJsonSerializer(typeof(Config)).WriteObject(w, this);
+                File.WriteAllBytes(tmp, json);
                 if (File.Exists(FilePath)) File.Replace(tmp, FilePath, null);
                 else File.Move(tmp, FilePath);
+                _lastSaved = json;
             }
             catch (Exception ex) { Log.Write("Config could not be saved: " + ex.Message); }
         }

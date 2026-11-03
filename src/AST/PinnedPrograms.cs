@@ -199,9 +199,16 @@ namespace AST
         public static ImageSource AppIcon(string appId)
         {
             if (string.IsNullOrEmpty(appId)) return null;
-            if (AppIcons.TryGetValue(appId, out var cached)) return cached;
-            var icon = IsExistingFile(appId) ? ReadIcon(appId) : ReadIcon(ShellAppsFolder + appId);
-            AppIcons[appId] = icon;
+            // The Start menu loads its icons on a background thread.
+            lock (AppIcons)
+            {
+                if (AppIcons.TryGetValue(appId, out var cached)) return cached;
+            }
+            ImageSource icon = null;
+            if (IsExistingFile(appId)) icon = ReadIcon(appId);
+            // A path can't be an installed app's id, and asking anyway returns a blank page icon.
+            else if (!Path.IsPathRooted(appId)) icon = ReadIcon(ShellAppsFolder + appId);
+            lock (AppIcons) AppIcons[appId] = icon;
             return icon;
         }
 

@@ -20,9 +20,15 @@ namespace AST
         private const int RestoreWaitMilliseconds = 5000, RestoreStepMilliseconds = 200;
         private static bool _guardStarted;
 
-        public static void Engage(Config config)
+        public static IntPtr TaskbarHandle => Native.FindWindow(PrimaryClass, null);
+
+        /// <param name="taskbarReady">
+        /// Whether the taskbar has built its buttons. A new taskbar doesn't build them while it's auto-hidden, and AST
+        /// reads its pinned programs and tray from them, so auto-hide has to wait. See-through takes effect straight away.
+        /// </param>
+        public static void Engage(Config config, bool taskbarReady)
         {
-            IntPtr tray = Native.FindWindow(PrimaryClass, null);
+            IntPtr tray = TaskbarHandle;
             if (tray == IntPtr.Zero) return;
             if (!config.TaskbarIsReplaced)
             {
@@ -31,8 +37,9 @@ namespace AST
                 config.Save();
             }
             StartGuard();
-            SetState(tray, ABS_AUTOHIDE);
             KeepHidden();
+            int wanted = taskbarReady ? ABS_AUTOHIDE : config.SavedTaskbarState & ~ABS_AUTOHIDE;
+            if (GetState(tray) != wanted) SetState(tray, wanted);
         }
 
         /// <summary>A restarted Explorer creates a new, visible taskbar, so this runs often.</summary>
@@ -99,7 +106,15 @@ namespace AST
         /// <summary>Runs as its own small process. It waits for AST to end, then restores the taskbar if AST didn't.</summary>
         public static void RunGuard(int appProcessId)
         {
-            try { Process.GetProcessById(appProcessId).WaitForExit(); }
+            try
+            {
+                using (var app = Process.GetProcessById(appProcessId))
+                {
+                    app.WaitForExit();
+                    // A crash can end AST before it gets to log anything, which leaves this as the only record.
+                    if (app.ExitCode != 0) Log.Write("AST ended unexpectedly, exit code 0x" + app.ExitCode.ToString("X8"));
+                }
+            }
             catch (ArgumentException) { }
             Release(Config.Load());
         }

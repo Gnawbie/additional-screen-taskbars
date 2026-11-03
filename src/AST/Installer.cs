@@ -15,12 +15,16 @@ namespace AST
     internal static class Installer
     {
         public const string AppName = "AST";
+        private const int CopyWaitMilliseconds = 15000, CopyRetryMilliseconds = 250;
         private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
         private const string UninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\AST";
 
         public static string InstallDir => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", AppName);
         public static string InstalledExe => Path.Combine(InstallDir, AppName + ".exe");
         private static string ShortcutPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), AppName + ".lnk");
+        private const string FolderShortcutName = "Start AST.lnk";
+        private static string SettingsFolderShortcutPath => Path.Combine(Config.DataDir, FolderShortcutName);
+        private static string DesktopShortcutPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), AppName + ".lnk");
         private static string CurrentExe => Assembly.GetExecutingAssembly().Location;
         public static string Version => Assembly.GetExecutingAssembly().GetName().Version.ToString(3);
 
@@ -28,26 +32,32 @@ namespace AST
 
         public static bool StartsWithWindows
         {
+            get => File.Exists(StartupShortcutPath) || HasOldRunEntry;
+            set
+            {
+                RemoveOldRunEntry();
+                if (value) CreateShortcut(StartupShortcutPath, CurrentExe);
+                else if (File.Exists(StartupShortcutPath)) File.Delete(StartupShortcutPath);
+            }
+        }
+
+        // A shortcut in the Startup folder, because AST's entry under the Run key wasn't started at sign-in on at
+        // least one PC. Versions before 0.1.4 used that entry, so it's still recognised and replaced.
+        private static string StartupShortcutPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Startup), AppName + ".lnk");
+
+        private static bool HasOldRunEntry
+        {
             get
             {
                 using (var k = Registry.CurrentUser.OpenSubKey(RunKey))
                     return k?.GetValue(AppName) != null;
             }
-            set
-            {
-                if (value) SetStartup(CurrentExe);
-                else
-                {
-                    using (var k = Registry.CurrentUser.CreateSubKey(RunKey))
-                        k.DeleteValue(AppName, false);
-                }
-            }
         }
 
-        private static void SetStartup(string exe)
+        private static void RemoveOldRunEntry()
         {
             using (var k = Registry.CurrentUser.CreateSubKey(RunKey))
-                k.SetValue(AppName, "\"" + exe + "\"");
+                k.DeleteValue(AppName, false);
         }
 
         private static bool IsFirstInstall()
@@ -56,10 +66,11 @@ namespace AST
                 return k == null;
         }
 
+        /// <param name="confirm">False when the person has already agreed, such as from the update button.</param>
         /// <returns>The process exit code.</returns>
-        public static int Install(bool silent)
+        public static int Install(bool silent, bool confirm = true)
         {
-            if (!silent)
+            if (!silent && confirm)
             {
                 var answer = MessageBox.Show("Install " + AppName + " " + Version + " for your account?\n\nNo admin rights are needed. You can remove it any time from Settings > Apps.",
                     AppName + " setup", MessageBoxButton.OKCancel, MessageBoxImage.Question);
@@ -70,11 +81,27 @@ namespace AST
                 Program.StopRunningInstance();
                 Directory.CreateDirectory(InstallDir);
                 if (!string.Equals(Path.GetFullPath(CurrentExe), Path.GetFullPath(InstalledExe), StringComparison.OrdinalIgnoreCase))
-                    File.Copy(CurrentExe, InstalledExe, true);
+                    CopyWhenUnlocked(CurrentExe, InstalledExe);
 
-                CreateShortcut();
+                CreateShortcut(ShortcutPath);
+                // Anyone who goes looking in AST's folders should find an obvious way to start it.
+                CreateShortcut(Path.Combine(InstallDir, FolderShortcutName));
+                Directory.CreateDirectory(Config.DataDir);
+                CreateShortcut(SettingsFolderShortcutPath);
+                // Only once, so an update never brings back a shortcut someone has deleted.
+                var config = Config.Load();
+                if (!config.DesktopShortcutMade)
+                {
+                    CreateShortcut(DesktopShortcutPath);
+                    config.DesktopShortcutMade = true;
+                    config.Save();
+                }
                 // Only on a first install, so an update never undoes someone turning this off.
-                if (IsFirstInstall()) SetStartup(InstalledExe);
+                if (IsFirstInstall() || HasOldRunEntry)
+                {
+                    RemoveOldRunEntry();
+                    CreateShortcut(StartupShortcutPath);
+                }
                 using (var k = Registry.CurrentUser.CreateSubKey(UninstallKey))
                 {
                     k.SetValue("DisplayName", AppName);
@@ -95,8 +122,34 @@ namespace AST
             catch (Exception ex)
             {
                 Log.Write("Install failed: " + ex);
-                if (!silent) MessageBox.Show("Setup could not finish:\n\n" + ex.Message, AppName + " setup", MessageBoxButton.OK, MessageBoxImage.Error);
+                if (!silent)
+                {
+                    MessageBox.Show("Setup could not finish:\n\n" + ex.Message, AppName + " setup", MessageBoxButton.OK, MessageBoxImage.Error);
+                    // The running copy has already been closed, so bring back whatever is still installed.
+                    if (File.Exists(InstalledExe))
+                    {
+                        try { Process.Start(InstalledExe); }
+                        catch (Exception startError) { Log.Write("Could not restart AST after the failed install: " + startError.Message); }
+                    }
+                }
                 return 2;
+            }
+        }
+
+        /// <summary>The closing app and its taskbar guard hold the file for a few moments after they've been told to stop.</summary>
+        private static void CopyWhenUnlocked(string from, string to)
+        {
+            for (int waited = 0; ; waited += CopyRetryMilliseconds)
+            {
+                try
+                {
+                    File.Copy(from, to, true);
+                    return;
+                }
+                catch (Exception ex) when ((ex is IOException || ex is UnauthorizedAccessException) && waited < CopyWaitMilliseconds)
+                {
+                    Thread.Sleep(CopyRetryMilliseconds);
+                }
             }
         }
 
@@ -117,6 +170,12 @@ namespace AST
                 MainTaskbar.Release(Config.Load());
                 StartsWithWindows = false;
                 if (File.Exists(ShortcutPath)) File.Delete(ShortcutPath);
+                if (File.Exists(DesktopShortcutPath)) File.Delete(DesktopShortcutPath);
+                if (File.Exists(SettingsFolderShortcutPath)) File.Delete(SettingsFolderShortcutPath);
+                // A later reinstall counts as new, even if the settings are kept.
+                var config = Config.Load();
+                config.DesktopShortcutMade = false;
+                config.Save();
                 Registry.CurrentUser.DeleteSubKey(UninstallKey, false);
                 if (removeSettings && Directory.Exists(Config.DataDir)) Directory.Delete(Config.DataDir, true);
                 DeleteInstallFolderAfterExit();
@@ -138,14 +197,16 @@ namespace AST
             Process.Start(new ProcessStartInfo("cmd.exe", cmd) { CreateNoWindow = true, UseShellExecute = false, WorkingDirectory = Path.GetTempPath() });
         }
 
-        private static void CreateShortcut()
+        private static void CreateShortcut(string path) => CreateShortcut(path, InstalledExe);
+
+        private static void CreateShortcut(string path, string exe)
         {
             Type shell = Type.GetTypeFromProgID("WScript.Shell");
             dynamic wsh = Activator.CreateInstance(shell);
-            dynamic link = wsh.CreateShortcut(ShortcutPath);
-            link.TargetPath = InstalledExe;
-            link.WorkingDirectory = InstallDir;
-            link.IconLocation = InstalledExe + ",0";
+            dynamic link = wsh.CreateShortcut(path);
+            link.TargetPath = exe;
+            link.WorkingDirectory = Path.GetDirectoryName(exe);
+            link.IconLocation = exe + ",0";
             link.Description = "Taskbars for your other screens";
             link.Save();
         }

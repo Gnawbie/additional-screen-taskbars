@@ -2,7 +2,7 @@
 
 Windows 11 can't give each screen its own taskbar position. AST adds a separate taskbar to your other screens, and each screen can have its own setting.
 
-[![Download ASTSetup.exe](https://img.shields.io/badge/Download-ASTSetup.exe-2ea44f?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/Gnawbie/additional-screen-taskbars/releases/download/v0.1.3/ASTSetup.exe)
+[![Download ASTSetup.exe](https://img.shields.io/badge/Download-ASTSetup.exe-2ea44f?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/Gnawbie/additional-screen-taskbars/releases/download/v0.1.4/ASTSetup.exe)
 
 ![Two screens side by side: the Windows taskbar along the bottom of the main screen, and an AST taskbar down the left side of the second screen](docs/screenshot.png)
 
@@ -19,11 +19,14 @@ Windows 11 can't give each screen its own taskbar position. AST adds a separate 
 - Show program names vertically on side bars
 - Right-click a bar and choose **Show pinned programs** to also list what's pinned to the Windows taskbar, in the same order
 - Right-click a program to pin or unpin it, run it as administrator or open its file location. Windows doesn't let other programs change its taskbar, so these pins apply to AST's bars only
-- Tray buttons for hidden icons, network and volume, with live status
+- Tray buttons for hidden icons, network and volume. Right-click the sound icon for a quick volume slider, and to switch between devices such as a headset and speakers. Right-click the network icon to run a speed test in your browser, using the site you pick in Options
 - Choose the Modern or Classic look, or add your own (see [docs/MODDING.md](docs/MODDING.md))
+- Update from Options with **Update to latest version**. AST only contacts GitHub when you press it
 - Bars hide when a fullscreen or borderless program covers their screen, even if it loses focus. To keep them showing, right-click a bar and untick **Hide for fullscreen programs**
 
-AST uses the documented Windows app bar API. It doesn't inject code into Explorer or games, and it doesn't hook the keyboard.
+- An optional Start menu with pinned programs above a search bar, plus a full app list. Turn it on in Options
+
+AST uses the documented Windows app bar API. It doesn't inject code into Explorer or games. It only watches the keyboard if you turn on opening the Start menu with the Windows key. It stops while a fullscreen program is running, and Windows' Start menu opens instead, unless you turn on keeping the key working in fullscreen programs. Anti-cheat software can object to that, so it's off by default.
 
 ## Replacing the Windows taskbar (experimental)
 
@@ -39,15 +42,16 @@ Restarting Explorer also brings it back, though it may stay on auto-hide until y
 
 ## Start menu and volume slider
 
-These arrive in the next release, version 0.1.4.
-
 ![AST's Start menu, with pinned programs above a search bar on the left and an alphabetical app list on the right](docs/start-menu.png)
 
 ![AST's volume slider, with a mute button, the current level, and links to Sound settings and Volume mixer](docs/volume-slider.png)
 
+If you have more than one sound device, the slider also shows a dropdown for switching between them.
+
 ## Known bugs
 
 - **Starting with Windows:** AST may not start after a restart, or may take over a minute to appear after you sign in. We're working on a fix. Until then, start it from the desktop shortcut or the Start menu. If you've replaced the Windows taskbar, it may also stay on auto-hide until AST starts.
+- **Freezing:** the bars could freeze, and Windows would offer to end AST, including when closing a game. Version 0.1.4 fixes one confirmed cause, slow icon reads, but it may not be the only one. If it still happens, wait 30 seconds before ending AST, so that `%APPDATA%\AST\log.txt` records what it was doing.
 
 ## Install
 
@@ -59,11 +63,13 @@ To remove AST, go to Settings > Apps > Installed apps.
 
 ## Use
 
+To start AST, double-click its desktop shortcut or search for AST in the Start menu. If it's already running, this opens Options. AST also starts with Windows, and you can turn that off in Options.
+
 Your main screen starts with no bar, because the Windows taskbar is there. Other screens start with a bar at the bottom. Turning on a bar for your main screen replaces the Windows taskbar (see below).
 
 To open Options, right-click a bar and choose **Options...**, or click the AST tray icon. Use **Identify screens** to see each screen's number. Numbers come from the Windows display name, such as `\\.\DISPLAY2`, and normally match Settings > System > Display.
 
-Command line options: `--install`, `--uninstall`, `--silent`, `--settings`, `--quit`, `--restore-taskbar`.
+Command line options: `--install`, `--update`, `--uninstall`, `--silent`, `--settings`, `--quit`, `--restore-taskbar`.
 
 ## Build
 

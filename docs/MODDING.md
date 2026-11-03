@@ -46,7 +46,7 @@ Each item in `Items` is a `TaskItem`:
 
 | Property | Meaning |
 |---|---|
-| `Title`, `Icon` | The window's title and icon |
+| `Title`, `Icon` | The window's title and icon. `Icon` is empty for a moment on a new item, so bind to it or watch `PropertyChanged` rather than reading it once |
 | `IsActive`, `IsMinimized` | The window's state |
 | `IsPinned` | A pinned program that isn't running, so it has no window |
 | `ActivateCommand` | Switch to the window, minimize it if it's already active, or start a pinned program |

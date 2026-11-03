@@ -102,6 +102,8 @@ namespace AST
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] public static extern int GetApplicationUserModelId(IntPtr process, ref int length, StringBuilder id);
         public const long WS_EX_LAYERED = 0x80000;
         public const uint LWA_ALPHA = 2;
+        [DllImport("user32.dll")] public static extern bool RedrawWindow(IntPtr hwnd, IntPtr rect, IntPtr region, uint flags);
+        public const uint RDW_INVALIDATE = 1, RDW_ALLCHILDREN = 0x80, RDW_UPDATENOW = 0x100;
         public const uint SWP_NOZORDER = 4;
 
         public const uint QDC_ONLY_ACTIVE_PATHS = 2;
@@ -164,7 +166,7 @@ namespace AST
 
         // ---- Input, only used for the Start button (Ctrl+Esc) ----
         [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
-        public const byte VK_CONTROL = 0x11, VK_ESCAPE = 0x1B;
+        public const byte VK_CONTROL = 0x11, VK_ESCAPE = 0x1B, VK_LWIN = 0x5B, VK_X = 0x58;
         public const uint KEYEVENTF_KEYUP = 2;
 
         // ---- Constants ----
