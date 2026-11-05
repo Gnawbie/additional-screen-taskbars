@@ -134,6 +134,22 @@ namespace AST
             return known;
         }
 
+        // By program, because these windows' titles are in the user's language and their class is shared with other parts of Windows.
+        private static readonly HashSet<string> WindowsStartPrograms = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "StartMenuExperienceHost.exe", "SearchHost.exe",
+        };
+
+        /// <summary>True while Windows' own Start menu or its search is the active window.</summary>
+        public static bool WindowsStartIsOpen()
+        {
+            IntPtr fg = Native.GetForegroundWindow();
+            if (fg == IntPtr.Zero) return false;
+            Native.GetWindowThreadProcessId(fg, out uint pid);
+            string exe = Native.ExePathOf(pid);
+            return exe != null && WindowsStartPrograms.Contains(System.IO.Path.GetFileName(exe));
+        }
+
         /// <summary>True when the topmost window on the screen is fullscreen, whether or not it has focus.</summary>
         public static bool IsFullscreenOn(MonitorInfo monitor, List<TrackedWindow> zOrdered)
         {

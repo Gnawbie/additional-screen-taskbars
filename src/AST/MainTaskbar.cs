@@ -106,17 +106,26 @@ namespace AST
         /// <summary>Runs as its own small process. It waits for AST to end, then restores the taskbar if AST didn't.</summary>
         public static void RunGuard(int appProcessId)
         {
+            WaitForApp(appProcessId);
+            Release(Config.Load());
+        }
+
+        /// <summary>Nothing here may stop the guard, because restoring the taskbar comes straight after.</summary>
+        private static void WaitForApp(int appProcessId)
+        {
             try
             {
                 using (var app = Process.GetProcessById(appProcessId))
                 {
+                    // Windows only keeps the exit code readable for as long as this handle is held.
+                    GC.KeepAlive(app.Handle);
                     app.WaitForExit();
                     // A crash can end AST before it gets to log anything, which leaves this as the only record.
                     if (app.ExitCode != 0) Log.Write("AST ended unexpectedly, exit code 0x" + app.ExitCode.ToString("X8"));
                 }
             }
-            catch (ArgumentException) { }
-            Release(Config.Load());
+            catch (ArgumentException) { /* AST has already gone. */ }
+            catch (Exception ex) { Log.Write("The taskbar guard couldn't watch AST: " + ex.Message); }
         }
 
         private static void ForEachTaskbar(Action<IntPtr> action)

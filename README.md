@@ -2,7 +2,7 @@
 
 Windows 11 can't give each screen its own taskbar position. AST adds a separate taskbar to your other screens, and each screen can have its own setting.
 
-[![Download ASTSetup.exe](https://img.shields.io/badge/Download-ASTSetup.exe-2ea44f?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/Gnawbie/additional-screen-taskbars/releases/download/v0.1.4/ASTSetup.exe)
+[![Download ASTSetup.exe](https://img.shields.io/badge/Download-ASTSetup.exe-2ea44f?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/Gnawbie/additional-screen-taskbars/releases/download/v0.1.5/ASTSetup.exe)
 
 ![Two screens side by side: the Windows taskbar along the bottom of the main screen, and an AST taskbar down the left side of the second screen](docs/screenshot.png)
 
@@ -22,9 +22,9 @@ Windows 11 can't give each screen its own taskbar position. AST adds a separate 
 - Tray buttons for hidden icons, network and volume. Right-click the sound icon for a quick volume slider, and to switch between devices such as a headset and speakers. Right-click the network icon to run a speed test in your browser, using the site you pick in Options
 - Choose the Modern or Classic look, or add your own (see [docs/MODDING.md](docs/MODDING.md))
 - Update from Options with **Update to latest version**. AST only contacts GitHub when you press it
-- Bars hide when a fullscreen or borderless program covers their screen, even if it loses focus. To keep them showing, right-click a bar and untick **Hide for fullscreen programs**
+- Bars hide when a fullscreen or borderless program covers their screen, even if it loses focus. They also come back while a Start menu is open. To keep them showing, right-click a bar and untick **Hide for fullscreen programs**
 
-- An optional Start menu with pinned programs above a search bar, plus a full app list. Turn it on in Options
+- An optional Start menu with pinned programs above a search bar, plus a full app list. Turn it on in Options. To pin a program to AST's bars, right-click it there or drag it onto a bar
 
 AST uses the documented Windows app bar API. It doesn't inject code into Explorer or games. It only watches the keyboard if you turn on opening the Start menu with the Windows key. It stops while a fullscreen program is running, and Windows' Start menu opens instead, unless you turn on keeping the key working in fullscreen programs. Anti-cheat software can object to that, so it's off by default.
 

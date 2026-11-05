@@ -57,11 +57,16 @@ namespace AST
         private DateTime _lastRefresh = DateTime.MinValue;
         private bool _refreshing;
         private Point _dragStart;
+        private StartMenuApp _pressedApp;
+        private readonly Func<string, bool> _isOnTaskbar;
+        private readonly Action<string, string, string, bool> _setTaskbarPin;
 
-        public StartMenuWindow(Config config, Func<IEnumerable<StartTile>> defaultPins)
+        public StartMenuWindow(Config config, Func<IEnumerable<StartTile>> defaultPins, Func<string, bool> isOnTaskbar, Action<string, string, string, bool> setTaskbarPin)
         {
             _config = config;
             _defaultPins = defaultPins;
+            _isOnTaskbar = isOnTaskbar;
+            _setTaskbarPin = setTaskbarPin;
             Title = "AST Start";
             WindowStyle = WindowStyle.None;
             ResizeMode = ResizeMode.NoResize;
@@ -93,7 +98,18 @@ namespace AST
                 _view.Refresh();
             };
             _search.PreviewKeyDown += OnSearchKey;
-            _list.PreviewMouseLeftButtonUp += (s, e) => { if (AppUnder(e) is StartMenuApp app) Launch(app.AppId); };
+            _list.PreviewMouseLeftButtonDown += (s, e) =>
+            {
+                _pressedApp = AppUnder(e);
+                _dragStart = e.GetPosition(this);
+            };
+            _list.PreviewMouseMove += OnListDragged;
+            // Only a press and release on the same program opens it, so a finished drag never does.
+            _list.PreviewMouseLeftButtonUp += (s, e) =>
+            {
+                if (_pressedApp != null && AppUnder(e) == _pressedApp) Launch(_pressedApp.AppId);
+                _pressedApp = null;
+            };
             _list.PreviewMouseRightButtonUp += OnAppRightClick;
             _pins.Drop += OnPinDropped;
             PreviewKeyDown += (s, e) => { if (e.Key == Key.Escape) Hide(); };
@@ -272,7 +288,29 @@ namespace AST
                 _config.StartPins.Add(new StartTile { AppId = app.AppId, Name = app.Name });
                 SavePins();
             }));
+            menu.Items.Add(TaskbarPinItem(app.AppId, app.Name));
             menu.IsOpen = true;
+        }
+
+        private MenuItem TaskbarPinItem(string appId, string name)
+        {
+            bool pinned = _isOnTaskbar(appId);
+            return Item(pinned ? "Unpin from taskbar" : "Pin to taskbar", () => _setTaskbarPin(appId, name, null, !pinned));
+        }
+
+        /// <summary>Dragging a program from the list onto a bar pins it there. See BarWindow.</summary>
+        private void OnListDragged(object sender, MouseEventArgs e)
+        {
+            if (_pressedApp == null || e.LeftButton != MouseButtonState.Pressed || !MovedFarEnough(e)) return;
+            var app = _pressedApp;
+            _pressedApp = null;
+            DragDrop.DoDragDrop(_list, new StartTile { AppId = app.AppId, Name = app.Name }, DragDropEffects.Move);
+        }
+
+        private bool MovedFarEnough(MouseEventArgs e)
+        {
+            var moved = e.GetPosition(this) - _dragStart;
+            return Math.Abs(moved.X) >= SystemParameters.MinimumHorizontalDragDistance || Math.Abs(moved.Y) >= SystemParameters.MinimumVerticalDragDistance;
         }
 
         // ---- Programs pinned above the search bar ----
@@ -313,6 +351,7 @@ namespace AST
                 var menu = new ContextMenu();
                 menu.Items.Add(Item("Open", () => Launch(pin.AppId)));
                 menu.Items.Add(Item("Unpin from Start", () => RemovePin(pin)));
+                menu.Items.Add(TaskbarPinItem(pin.AppId, pin.Name));
                 menu.IsOpen = true;
             };
             AllowDragging(button, pin);
@@ -343,9 +382,7 @@ namespace AST
             button.PreviewMouseLeftButtonDown += (s, e) => _dragStart = e.GetPosition(this);
             button.PreviewMouseMove += (s, e) =>
             {
-                if (e.LeftButton != MouseButtonState.Pressed) return;
-                var moved = e.GetPosition(this) - _dragStart;
-                if (Math.Abs(moved.X) < SystemParameters.MinimumHorizontalDragDistance && Math.Abs(moved.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+                if (e.LeftButton != MouseButtonState.Pressed || !MovedFarEnough(e)) return;
                 DragDrop.DoDragDrop(button, item, DragDropEffects.Move);
             };
         }

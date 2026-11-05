@@ -19,7 +19,17 @@ namespace AST
         private bool _replacingTaskbar;
         private StartMenuWindow _startMenu;
         private readonly StartKeyHook _startKey;
-        private StartMenuWindow StartMenu => _startMenu ?? (_startMenu = new StartMenuWindow(Config, DefaultStartTiles));
+        private StartMenuWindow StartMenu
+        {
+            get
+            {
+                if (_startMenu != null) return _startMenu;
+                _startMenu = new StartMenuWindow(Config, DefaultStartTiles, IsPinned, SetTaskbarPin);
+                // Bars show alongside the menu over a fullscreen program, then hide again with it.
+                _startMenu.IsVisibleChanged += (s, e) => _startMenu.Dispatcher.BeginInvoke(new Action(_tracker.Refresh));
+                return _startMenu;
+            }
+        }
 
         public Config Config { get; }
         public ThemeManager Themes { get; }
@@ -90,6 +100,7 @@ namespace AST
                     };
                     bar.PinToggled += TogglePin;
                     bar.IsItemPinned = IsPinned;
+                    bar.StartTileDropped += tile => SetTaskbarPin(tile.AppId, tile.Name, null, true);
                     bar.HideForFullscreenToggled += () =>
                     {
                         Config.KeepBarsOverFullscreen = !Config.KeepBarsOverFullscreen;
@@ -223,9 +234,10 @@ namespace AST
             _startKey.SetEnabled(Config.UseAstStartMenu && Config.StartMenuUsesWindowsKey
                 && (Config.StartMenuKeyInFullscreen || !_monitors.Any(m => WindowTracker.IsFullscreenOn(m, windows))));
             if (_replacingTaskbar) KeepTaskbarReplaced();
+            bool startOpen = (_startMenu != null && _startMenu.IsVisible) || WindowTracker.WindowsStartIsOpen();
             foreach (var bar in _bars.Values)
             {
-                bar.SetFullscreenHidden(!Config.KeepBarsOverFullscreen && WindowTracker.IsFullscreenOn(bar.Monitor, windows));
+                bar.SetFullscreenHidden(!Config.KeepBarsOverFullscreen && !startOpen && WindowTracker.IsFullscreenOn(bar.Monitor, windows));
                 bar.ViewModel.Update(Config.OwnScreenProgramsOnly ? windows.Where(w => w.Monitor == bar.Monitor.Handle) : windows);
             }
         }
@@ -252,32 +264,42 @@ namespace AST
         private bool IsHiddenPin(string appId) => Config.HiddenPins.Any(h => SameApp(h, appId));
 
         /// <summary>Whether a program counts as pinned, for choosing between "Pin" and "Unpin" in its menu.</summary>
-        private bool IsPinned(TaskItem item)
+        private bool IsPinned(TaskItem item) => item.AppId != null && IsPinned(item.AppId);
+
+        private bool IsPinned(string appId)
         {
-            if (item.AppId == null) return false;
-            if (Config.ExtraPins.Any(x => SameApp(x.AppId, item.AppId))) return true;
-            return !IsHiddenPin(item.AppId) && _tray.TaskOrder.Any(o => o.IsPinned && SameApp(o.AppId, item.AppId));
+            if (Config.ExtraPins.Any(x => SameApp(x.AppId, appId))) return true;
+            return !IsHiddenPin(appId) && _tray.TaskOrder.Any(o => o.IsPinned && SameApp(o.AppId, appId));
+        }
+
+        private void TogglePin(TaskItem item)
+        {
+            if (item.AppId != null) SetTaskbarPin(item.AppId, item.ProgramName ?? item.Title, item.ExePath, !IsPinned(item));
         }
 
         /// <summary>
         /// Windows doesn't let other programs change its taskbar, so these pins belong to AST's bars.
         /// Pinning also turns the option on, because otherwise the pin wouldn't appear.
         /// </summary>
-        private void TogglePin(TaskItem item)
+        private void SetTaskbarPin(string appId, string name, string path, bool pin)
         {
-            if (item.AppId == null) return;
-            if (IsPinned(item))
+            if (pin == IsPinned(appId))
             {
-                Config.ExtraPins.RemoveAll(x => SameApp(x.AppId, item.AppId));
-                if (_tray.TaskOrder.Any(o => o.IsPinned && SameApp(o.AppId, item.AppId))) Config.HiddenPins.Add(item.AppId);
+                // Already as asked, but a pin dropped on a bar should still be seen.
+                if (!pin || Config.ShowPinnedPrograms) return;
+            }
+            else if (pin)
+            {
+                Config.HiddenPins.RemoveAll(h => SameApp(h, appId));
+                if (!_tray.TaskOrder.Any(o => o.IsPinned && SameApp(o.AppId, appId)))
+                    Config.ExtraPins.Add(new ExtraPin { AppId = appId, Name = name, Path = path });
             }
             else
             {
-                Config.HiddenPins.RemoveAll(h => SameApp(h, item.AppId));
-                if (!_tray.TaskOrder.Any(o => o.IsPinned && SameApp(o.AppId, item.AppId)))
-                    Config.ExtraPins.Add(new ExtraPin { AppId = item.AppId, Name = item.ProgramName ?? item.Title, Path = item.ExePath });
-                Config.ShowPinnedPrograms = true;
+                Config.ExtraPins.RemoveAll(x => SameApp(x.AppId, appId));
+                if (_tray.TaskOrder.Any(o => o.IsPinned && SameApp(o.AppId, appId))) Config.HiddenPins.Add(appId);
             }
+            if (pin) Config.ShowPinnedPrograms = true;
             Sync();
         }
 

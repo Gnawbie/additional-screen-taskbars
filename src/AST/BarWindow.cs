@@ -39,6 +39,8 @@ namespace AST
         public event Action LockToggled;
         /// <summary>Raised when the user chooses "Pin to taskbar" or "Unpin from taskbar" for a program.</summary>
         public event Action<TaskItem> PinToggled;
+        /// <summary>Raised when a program is dragged from the Start menu and dropped on this bar.</summary>
+        public event Action<StartTile> StartTileDropped;
         /// <summary>Tells the menu whether a program is pinned.</summary>
         public Func<TaskItem, bool> IsItemPinned { get; set; }
         /// <summary>Raised when the user flips "Hide for fullscreen programs" in the right-click menu.</summary>
@@ -114,6 +116,17 @@ namespace AST
             MouseMove += OnBarDragged;
             MouseLeftButtonUp += (s, e) => { if (_edgeDragArmed) ReleaseMouseCapture(); };
             LostMouseCapture += OnBarDragEnded;
+            AllowDrop = true;
+            DragOver += (s, e) =>
+            {
+                e.Effects = e.Data.GetDataPresent(typeof(StartTile)) ? DragDropEffects.Move : DragDropEffects.None;
+                e.Handled = true;
+            };
+            Drop += (s, e) =>
+            {
+                if (e.Data.GetData(typeof(StartTile)) is StartTile tile) StartTileDropped?.Invoke(tile);
+                e.Handled = true;
+            };
             Closed += (s, e) => { _redock.Stop(); Unregister(); };
         }
 
