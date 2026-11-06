@@ -146,7 +146,7 @@ namespace AST
         {
             Activate<IAudioSessionManager2>(DefaultDevice()).GetSessionEnumerator(out IAudioSessionEnumerator sessions);
             sessions.GetCount(out int count);
-            var byProcess = new Dictionary<string, AudioApp>();
+            var byProgram = new Dictionary<string, AudioApp>();
             var apps = new List<AudioApp>();
             for (int i = 0; i < count; i++)
             {
@@ -158,20 +158,22 @@ namespace AST
                     if (state == SessionExpired) continue;
                     bool system = control.IsSystemSoundsSession() == 0;
                     control.GetProcessId(out uint pid);
-                    string key = system ? "system" : pid.ToString();
-                    if (!byProcess.TryGetValue(key, out AudioApp app))
+                    // Programs like Discord and browsers play sound from several processes, which should share one column.
+                    string exePath = system ? null : Native.ExePathOf(pid);
+                    string key = system ? "system" : exePath != null ? exePath.ToLowerInvariant() : "pid " + pid;
+                    if (!byProgram.TryGetValue(key, out AudioApp app))
                     {
                         app = new AudioApp { ProcessId = pid, IsSystemSounds = system };
                         if (system) app.Name = "System Sounds";
                         else
                         {
-                            app.ExePath = Native.ExePathOf(pid);
+                            app.ExePath = exePath;
                             // Programs can name their own sessions. Windows' own names are resource references starting with @.
                             control.GetDisplayName(out string display);
                             app.Name = !string.IsNullOrWhiteSpace(display) && !display.StartsWith("@") ? display
                                 : app.ExePath != null ? Path.GetFileNameWithoutExtension(app.ExePath) : "Program " + pid;
                         }
-                        byProcess[key] = app;
+                        byProgram[key] = app;
                         apps.Add(app);
                     }
                     app.Add(session);
