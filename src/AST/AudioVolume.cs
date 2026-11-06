@@ -13,7 +13,7 @@ namespace AST
     }
 
     /// <summary>The default playback device's volume, through Windows' documented Core Audio interfaces.</summary>
-    public static class AudioVolume
+    public static partial class AudioVolume
     {
         private const int Render = 0, Multimedia = 1, ClsctxAll = 23;
         private const int RoleConsole = 0, RoleCommunications = 2, StateActive = 1, StorageRead = 0;

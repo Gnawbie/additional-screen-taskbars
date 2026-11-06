@@ -56,7 +56,9 @@ namespace AST
 
             var links = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(14, 6, 0, 8) };
             links.Children.Add(Link("Sound settings", "ms-settings:sound", text));
-            links.Children.Add(Link("Volume mixer", "ms-settings:apps-volume", text));
+            var mixer = Link("Volume mixer", null, text);
+            mixer.Click += (s, e) => new MixerWindow(_monitor, classic).Show();
+            links.Children.Add(mixer);
 
             var root = new StackPanel();
             root.Children.Add(row);
@@ -87,7 +89,11 @@ namespace AST
                 long ex = Native.GetWindowLongPtr(h, Native.GWL_EXSTYLE).ToInt64();
                 Native.SetWindowLongPtr(h, Native.GWL_EXSTYLE, new IntPtr(ex | Native.WS_EX_TOOLWINDOW));
             };
-            Loaded += (s, e) => PlaceBesideCursor();
+            Loaded += (s, e) =>
+            {
+                PlaceBesideCursor(this, _monitor, PopupWidth, Height);
+                _slider.Focus();
+            };
         }
 
         private Button Link(string label, string page, Brush color)
@@ -103,7 +109,7 @@ namespace AST
             link.Click += (s, e) =>
             {
                 Close();
-                TrayMirror.OpenSettingsPage(page);
+                if (page != null) TrayMirror.OpenSettingsPage(page);
             };
             return link;
         }
@@ -161,21 +167,20 @@ namespace AST
         }
 
         /// <summary>Stays fully on the bar's screen, whichever edge the bar is on.</summary>
-        private void PlaceBesideCursor()
+        internal static void PlaceBesideCursor(Window window, MonitorInfo monitor, double width, double height)
         {
-            IntPtr h = new WindowInteropHelper(this).Handle;
-            double scale = _monitor.DpiScale;
-            int w = (int)Math.Round(PopupWidth * scale), height = (int)Math.Round(Height * scale);
+            IntPtr h = new WindowInteropHelper(window).Handle;
+            double scale = monitor.DpiScale;
+            int w = (int)Math.Round(width * scale), ht = (int)Math.Round(height * scale);
             var cursor = Forms.Cursor.Position;
             var info = new Native.MONITORINFOEX { cbSize = System.Runtime.InteropServices.Marshal.SizeOf(typeof(Native.MONITORINFOEX)) };
-            Native.GetMonitorInfo(_monitor.Handle, ref info);
+            Native.GetMonitorInfo(monitor.Handle, ref info);
             var work = info.rcWork;
             int x = Math.Max(work.Left, Math.Min(cursor.X - w / 2, work.Right - w));
-            int y = Math.Max(work.Top, Math.Min(cursor.Y - height / 2, work.Bottom - height));
-            Native.SetWindowPos(h, Native.HWND_TOPMOST, x, y, w, height, Native.SWP_SHOWWINDOW);
-            Activate();
+            int y = Math.Max(work.Top, Math.Min(cursor.Y - ht / 2, work.Bottom - ht));
+            Native.SetWindowPos(h, Native.HWND_TOPMOST, x, y, w, ht, Native.SWP_SHOWWINDOW);
+            window.Activate();
             Native.SetForegroundWindow(h);
-            _slider.Focus();
         }
     }
 }

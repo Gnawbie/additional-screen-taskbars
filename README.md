@@ -2,7 +2,7 @@
 
 Windows 11 can't give each screen its own taskbar position. AST adds a separate taskbar to your other screens, and each screen can have its own setting.
 
-[![Download ASTSetup.exe](https://img.shields.io/badge/Download-ASTSetup.exe-2ea44f?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/Gnawbie/additional-screen-taskbars/releases/download/v0.1.5/ASTSetup.exe)
+[![Download ASTSetup.exe](https://img.shields.io/badge/Download-ASTSetup.exe-2ea44f?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/Gnawbie/additional-screen-taskbars/releases/download/v0.1.6/ASTSetup.exe)
 
 ![Two screens side by side: the Windows taskbar along the bottom of the main screen, and an AST taskbar down the left side of the second screen](docs/screenshot.png)
 
@@ -47,6 +47,8 @@ Restarting Explorer also brings it back, though it may stay on auto-hide until y
 ![AST's volume slider, with a mute button, the current level, and links to Sound settings and Volume mixer](docs/volume-slider.png)
 
 If you have more than one sound device, the slider also shows a dropdown for switching between them.
+
+**Volume mixer** opens a small mixer like the one in Windows 10, with a slider, mute button and live level meter for your sound device and for each program playing sound.
 
 ## Known bugs
 

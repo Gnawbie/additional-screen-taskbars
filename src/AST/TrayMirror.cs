@@ -136,16 +136,38 @@ namespace AST
             var trayButtons = new List<AutomationElement>();
             var taskButtons = new List<AutomationElement>();
             Collect(AutomationElement.FromHandle(taskbar), trayButtons, taskButtons, 0);
-            entries.AddRange(trayButtons
+            var seen = new HashSet<TrayKind>();
+            foreach (var entry in trayButtons
                 // The clock's class varies, so also check its name. AST's bars have their own clock.
                 .Where(e => e.Current.ClassName != ClockClass && e.Current.ClassName != ShowDesktopClass && !e.Current.Name.StartsWith("Clock"))
                 .OrderBy(e => e.Current.BoundingRectangle.X)
-                .Select(Describe));
+                .Select(Describe))
+            {
+                // Windows has only one of each of these. A button with another name in the user's language could still
+                // be mistaken for one by its class, as the notifications button once was for volume.
+                if (entry.Kind != TrayKind.Other && !seen.Add(entry.Kind))
+                {
+                    LogExtra(entry);
+                    continue;
+                }
+                entries.Add(entry);
+            }
             var inOrder = taskButtons.OrderBy(e => e.Current.BoundingRectangle.X).ToList();
             pinned.AddRange(inOrder
                 .Select(e => PinnedPrograms.FromTaskbarButton(e.Current.Name, e.Current.AutomationId))
                 .Where(p => p != null));
             order.AddRange(inOrder.Select(e => PinnedPrograms.OrderEntryFromButton(e.Current.Name, e.Current.AutomationId)).Where(o => o != null));
+        }
+
+        private static readonly HashSet<string> LoggedExtras = new HashSet<string>();
+
+        /// <summary>Once per button, since the tray is read again every few seconds.</summary>
+        private static void LogExtra(TrayEntry entry)
+        {
+            string what = entry.Kind + " button \"" + entry.Name + "\" (" + entry.Element.Current.ClassName + ")";
+            lock (LoggedExtras)
+                if (!LoggedExtras.Add(what)) return;
+            Log.Write("Left out a second " + what);
         }
 
         private static void Collect(AutomationElement parent, List<AutomationElement> trayButtons, List<AutomationElement> taskButtons, int depth)
@@ -175,6 +197,12 @@ namespace AST
             }
             // Before the class checks, because a microphone-in-use button can share the volume button's class.
             else if (n.Contains("microphone")) entry.Glyph = GlyphMic;
+            // Also before the class checks: with new notifications, this button can share the volume button's class.
+            else if (n.StartsWith("notifications"))
+            {
+                entry.Kind = TrayKind.Notifications;
+                entry.Glyph = GlyphBell;
+            }
             else if (n.StartsWith("network") || className == NetworkClass)
             {
                 entry.Kind = TrayKind.Network;
@@ -185,11 +213,6 @@ namespace AST
             {
                 entry.Kind = TrayKind.Volume;
                 entry.Glyph = n.Contains("muted") || n.TrimEnd().EndsWith(": 0%") ? GlyphMute : GlyphVolume;
-            }
-            else if (n.StartsWith("notifications"))
-            {
-                entry.Kind = TrayKind.Notifications;
-                entry.Glyph = GlyphBell;
             }
             else if (n.StartsWith("battery")) entry.Glyph = GlyphBattery;
             else if (n.Contains("bluetooth")) entry.Glyph = GlyphBluetooth;

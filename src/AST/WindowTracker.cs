@@ -242,7 +242,8 @@ namespace AST
             return Native.ExePathOf(pid);
         }
 
-        private static ImageSource FromExe(string path)
+        /// <summary>Only call this on the background reader's thread, which is the only one that uses the cache.</summary>
+        internal static ImageSource FromExe(string path)
         {
             if (string.IsNullOrEmpty(path)) return null;
             if (ByExe.TryGetValue(path, out var cached)) return cached;
