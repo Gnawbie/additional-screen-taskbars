@@ -50,6 +50,8 @@ If you have more than one sound device, the slider also shows a dropdown for swi
 
 **Volume mixer** opens a small mixer like the one in Windows 10, with a slider, mute button and live level meter for your sound device and for each program playing sound.
 
+![AST's volume mixer, with the sound device on the left and a column for each program playing sound, each with its icon, a vertical slider, a green level meter, its level and a mute button](docs/volume-mixer.png)
+
 ## Known bugs
 
 - **Starting with Windows:** AST may not start after a restart, or may take over a minute to appear after you sign in. We're working on a fix. Until then, start it from the desktop shortcut or the Start menu. If you've replaced the Windows taskbar, it may also stay on auto-hide until AST starts.
