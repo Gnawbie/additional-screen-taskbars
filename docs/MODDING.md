@@ -41,6 +41,7 @@ The template's data context is a `BarViewModel`:
 | `TrayItems`, `ShowTray` | Tray buttons, each with `Name`, `Glyph` (in the Segoe MDL2 Assets font) and `InvokeCommand` |
 | `MonitorName`, `MonitorNumber` | Which screen this is |
 | `StartCommand`, `SettingsCommand` | Open Start, or AST's Options |
+| `ClockCommand` | Open the calendar. Bind your clock to it, such as by putting the clock in a `Button` with `Command="{Binding ClockCommand}"` |
 
 Each item in `Items` is a `TaskItem`:
 
