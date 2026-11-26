@@ -54,10 +54,18 @@ namespace AST
                 return 0;
             }
 
+            // From File Explorer's menu. The running copy picks the request up; if there isn't one, this becomes it.
+            bool pinRequest = PinRequests.TryQueue(args);
+
             using (var mutex = new Mutex(true, MutexName, out bool first))
             {
                 if (!first)
                 {
+                    if (pinRequest)
+                    {
+                        Signal(PinRequests.EventName);
+                        return 0;
+                    }
                     // Already running: bring up its settings instead of adding a second set of bars.
                     Signal(ShowEventName);
                     return 0;
@@ -106,8 +114,12 @@ namespace AST
                 _manager?.ReleaseTaskbar();
             };
             app.DispatcherUnhandledException += OnUnhandled;
+            // Runs for any exit that .NET gets to see, but not when the process is killed, so its absence narrows it down.
+            AppDomain.CurrentDomain.ProcessExit += (s, e) => Log.Write("AST's process is exiting");
             var config = Config.Load();
-            Log.Write("Loaded settings: show pinned programs " + (config.ShowPinnedPrograms ? "on" : "off"));
+            Log.Write("Loaded settings: show pinned programs " + (config.ShowPinnedPrograms ? "on" : "off") +
+                ", pinned in AST: " + (config.ExtraPins.Count == 0 ? "none" : string.Join(", ", config.ExtraPins.Select(p => p.Name))) +
+                ", Windows pins removed in AST: " + (config.HiddenPins.Count == 0 ? "none" : string.Join(", ", config.HiddenPins)));
             AppDomain.CurrentDomain.UnhandledException += (s, e) =>
             {
                 Log.Write("Fatal: " + e.ExceptionObject);
@@ -122,6 +134,11 @@ namespace AST
                 Log.Write("Bars ready, " + (int)(DateTime.Now - Process.GetCurrentProcess().StartTime).TotalSeconds + " seconds after starting");
                 CreateTray();
                 WatchSignals(app);
+                // Requests made while AST wasn't running, including the one that may have started it.
+                HandlePinRequests();
+                // Done on every start, so copies installed before these items existed get them too.
+                if (string.Equals(Assembly.GetExecutingAssembly().Location, Installer.InstalledExe, StringComparison.OrdinalIgnoreCase))
+                    PinRequests.Register(Installer.InstalledExe);
                 if (args.Contains("--settings")) ShowSettings();
             };
             app.Exit += (s, e) =>
@@ -145,12 +162,14 @@ namespace AST
         {
             var show = new EventWaitHandle(false, EventResetMode.AutoReset, ShowEventName);
             var quit = new EventWaitHandle(false, EventResetMode.AutoReset, QuitEventName);
+            var pin = new EventWaitHandle(false, EventResetMode.AutoReset, PinRequests.EventName);
             var thread = new Thread(() =>
             {
                 while (true)
                 {
-                    int which = WaitHandle.WaitAny(new WaitHandle[] { show, quit });
+                    int which = WaitHandle.WaitAny(new WaitHandle[] { show, quit, pin });
                     if (which == 0) app.Dispatcher.BeginInvoke(new Action(ShowSettings));
+                    else if (which == 2) app.Dispatcher.BeginInvoke(new Action(HandlePinRequests));
                     else
                     {
                         app.Dispatcher.BeginInvoke(new Action(app.Shutdown));
@@ -159,6 +178,15 @@ namespace AST
                 }
             }) { IsBackground = true, Name = "AST signals" };
             thread.Start();
+        }
+
+        private static void HandlePinRequests()
+        {
+            foreach (var request in PinRequests.Take())
+            {
+                if (request.Key == PinRequests.StartArg) _manager?.PinFileToStart(request.Value);
+                else _manager?.PinFileToTaskbar(request.Value);
+            }
         }
 
         private static void CreateTray()

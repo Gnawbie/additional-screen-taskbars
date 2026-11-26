@@ -1,0 +1,4 @@
+LIBRARY ASTMenu
+EXPORTS
+    DllGetClassObject PRIVATE
+    DllCanUnloadNow PRIVATE

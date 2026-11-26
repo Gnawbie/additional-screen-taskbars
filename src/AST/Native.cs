@@ -156,6 +156,8 @@ namespace AST
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
         public static extern bool QueryFullProcessImageName(IntPtr process, int flags, StringBuilder name, ref int size);
         public const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+        public static extern int GetLongPathName(string shortPath, StringBuilder longPath, int size);
 
         // ---- Events ----
         public delegate void WinEventProc(IntPtr hook, uint ev, IntPtr hwnd, int idObject, int idChild, uint thread, uint time);
@@ -206,6 +208,42 @@ namespace AST
                 var sb = new StringBuilder(1024);
                 int size = sb.Capacity;
                 return QueryFullProcessImageName(p, 0, sb, ref size) ? sb.ToString() : null;
+            }
+            finally { CloseHandle(p); }
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct ProcessBasicInformation
+        {
+            public IntPtr ExitStatus, PebBaseAddress, AffinityMask, BasePriority, UniqueProcessId, InheritedFromUniqueProcessId;
+        }
+
+        [DllImport("ntdll.dll")]
+        private static extern int NtQueryInformationProcess(IntPtr process, int infoClass, ref ProcessBasicInformation info, int size, out int returned);
+
+        [DllImport("kernel32.dll")]
+        private static extern bool GetProcessTimes(IntPtr process, out long creation, out long exit, out long kernel, out long user);
+
+        /// <summary>The process that started this one, while it is still running, or 0.</summary>
+        public static uint ParentProcessId(uint pid)
+        {
+            IntPtr p = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+            if (p == IntPtr.Zero) return 0;
+            try
+            {
+                var info = new ProcessBasicInformation();
+                if (NtQueryInformationProcess(p, 0, ref info, Marshal.SizeOf(info), out _) != 0) return 0;
+                uint parent = (uint)info.InheritedFromUniqueProcessId.ToInt64();
+                // Process ids are reused, so a "parent" that started later is a different program.
+                IntPtr q = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, parent);
+                if (q == IntPtr.Zero) return 0;
+                try
+                {
+                    if (!GetProcessTimes(p, out long childStart, out _, out _, out _) ||
+                        !GetProcessTimes(q, out long parentStart, out _, out _, out _) || parentStart > childStart) return 0;
+                    return parent;
+                }
+                finally { CloseHandle(q); }
             }
             finally { CloseHandle(p); }
         }

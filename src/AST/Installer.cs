@@ -116,6 +116,8 @@ namespace AST
                     k.SetValue("NoModify", 1, RegistryValueKind.DWord);
                     k.SetValue("NoRepair", 1, RegistryValueKind.DWord);
                 }
+                PinRequests.Register(InstalledExe);
+                ExplorerMenu.Install(InstallDir);
                 if (!silent) Process.Start(InstalledExe);
                 return 0;
             }
@@ -177,6 +179,8 @@ namespace AST
                 config.DesktopShortcutMade = false;
                 config.Save();
                 Registry.CurrentUser.DeleteSubKey(UninstallKey, false);
+                PinRequests.Unregister();
+                ExplorerMenu.Remove();
                 if (removeSettings && Directory.Exists(Config.DataDir)) Directory.Delete(Config.DataDir, true);
                 DeleteInstallFolderAfterExit();
                 return 0;

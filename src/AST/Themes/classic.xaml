@@ -117,7 +117,17 @@
             </Border.Style>
             <!-- The clock stays upright and shrinks to fit a thin side bar. -->
             <Viewbox Stretch="Uniform" StretchDirection="DownOnly">
-              <TextBlock Text="{Binding TimeText}" VerticalAlignment="Center" HorizontalAlignment="Center" />
+              <!-- Clicking it opens the calendar. No button look, so the clock stays a plain sunken panel. -->
+              <Button Command="{Binding ClockCommand}" Focusable="False" Cursor="Arrow">
+                <Button.Template>
+                  <ControlTemplate TargetType="Button">
+                    <Border Background="Transparent">
+                      <ContentPresenter />
+                    </Border>
+                  </ControlTemplate>
+                </Button.Template>
+                <TextBlock Text="{Binding TimeText}" VerticalAlignment="Center" HorizontalAlignment="Center" />
+              </Button>
             </Viewbox>
           </Border>
         </Border>

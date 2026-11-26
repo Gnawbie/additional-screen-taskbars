@@ -210,6 +210,7 @@ namespace AST
             MonitorNumber = monitor.Number;
             StartCommand = new RelayCommand(OpenStart);
             SettingsCommand = new RelayCommand(showSettings);
+            ClockCommand = new RelayCommand(() => ClockClicked?.Invoke());
         }
 
         public ObservableCollection<TaskItem> Items { get; } = new ObservableCollection<TaskItem>();
@@ -220,6 +221,9 @@ namespace AST
         public string DateText { get => _date; internal set => Set(ref _date, value); }
         public ICommand StartCommand { get; }
         public ICommand SettingsCommand { get; }
+        /// <summary>Opens a calendar beside the clock, as clicking the clock did in Windows 10.</summary>
+        public ICommand ClockCommand { get; }
+        internal event Action ClockClicked;
         public ObservableCollection<TrayItem> TrayItems { get; } = new ObservableCollection<TrayItem>();
 
         private bool _showTray;

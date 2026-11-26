@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
@@ -21,6 +22,7 @@ namespace AST
         private readonly uint _callbackMessage = Native.RegisterWindowMessage("AST.AppBar.Callback");
         private readonly Action _showSettings;
         private readonly DispatcherTimer _redock;
+        private const uint WM_DISPLAYCHANGE = 0x007E;
         private IntPtr _hwnd;
         private const double GripSize = 5;
         private readonly Grid _root = new Grid();
@@ -41,6 +43,16 @@ namespace AST
         public event Action<TaskItem> PinToggled;
         /// <summary>Raised when a program is dragged from the Start menu and dropped on this bar.</summary>
         public event Action<StartTile> StartTileDropped;
+        /// <summary>Raised for each program or shortcut file dragged from File Explorer and dropped on this bar.</summary>
+        public event Action<string> FileDropped;
+
+        /// <summary>Program and shortcut files being dragged from File Explorer, or null for anything else.</summary>
+        internal static string[] DroppedFiles(DragEventArgs e)
+        {
+            if (!(e.Data.GetData(DataFormats.FileDrop) is string[] files)) return null;
+            var pinnable = files.Where(f => f.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase)).ToArray();
+            return pinnable.Length > 0 ? pinnable : null;
+        }
         /// <summary>Tells the menu whether a program is pinned.</summary>
         public Func<TaskItem, bool> IsItemPinned { get; set; }
         /// <summary>Raised when the user flips "Hide for fullscreen programs" in the right-click menu.</summary>
@@ -87,6 +99,7 @@ namespace AST
             Settings = settings;
             _showSettings = showSettings;
             ViewModel = new BarViewModel(monitor, showSettings);
+            ViewModel.ClockClicked += () => CalendarWindow.Toggle(Monitor, ThemeId == "classic");
 
             Title = "AST";
             WindowStyle = WindowStyle.None;
@@ -119,15 +132,18 @@ namespace AST
             AllowDrop = true;
             DragOver += (s, e) =>
             {
-                e.Effects = e.Data.GetDataPresent(typeof(StartTile)) ? DragDropEffects.Move : DragDropEffects.None;
+                e.Effects = e.Data.GetDataPresent(typeof(StartTile)) ? DragDropEffects.Move
+                    : DroppedFiles(e) != null ? DragDropEffects.Link : DragDropEffects.None;
                 e.Handled = true;
             };
             Drop += (s, e) =>
             {
                 if (e.Data.GetData(typeof(StartTile)) is StartTile tile) StartTileDropped?.Invoke(tile);
+                else if (DroppedFiles(e) is string[] files)
+                    foreach (var file in files) FileDropped?.Invoke(file);
                 e.Handled = true;
             };
-            Closed += (s, e) => { _redock.Stop(); Unregister(); };
+            Closed += (s, e) => { _redock.Stop(); _repaint?.Stop(); Unregister(); };
         }
 
         public void SetContent(FrameworkElement content, string themeId)
@@ -338,10 +354,43 @@ namespace AST
             {
                 Native.ShowWindow(_hwnd, Native.SW_SHOWNOACTIVATE);
                 Native.SetWindowPos(_hwnd, Native.HWND_TOPMOST, 0, 0, 0, 0, Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE);
-                // WPF doesn't know the window was hidden, so it would only repaint what has changed since.
-                _root.InvalidateVisual();
-                Native.RedrawWindow(_hwnd, IntPtr.Zero, IntPtr.Zero, Native.RDW_INVALIDATE | Native.RDW_ALLCHILDREN | Native.RDW_UPDATENOW);
+                RepaintNowAndLater();
             }
+        }
+
+        // A game can take a few seconds to give the screen back after it closes, and a repaint before then is lost.
+        private static readonly int[] RepaintDelaysMilliseconds = { 500, 2000, 5000 };
+        private DispatcherTimer _repaint;
+        private int _repaintsDone;
+
+        /// <summary>
+        /// WPF only repaints what has changed, so after the bar was hidden or the screen was taken over, everything
+        /// that hasn't changed would stay black until something else redraws it.
+        /// </summary>
+        private void RepaintNowAndLater()
+        {
+            Repaint();
+            if (_repaint == null)
+            {
+                _repaint = new DispatcherTimer();
+                _repaint.Tick += (s, e) =>
+                {
+                    Repaint();
+                    if (++_repaintsDone >= RepaintDelaysMilliseconds.Length) _repaint.Stop();
+                    else _repaint.Interval = TimeSpan.FromMilliseconds(RepaintDelaysMilliseconds[_repaintsDone] - RepaintDelaysMilliseconds[_repaintsDone - 1]);
+                };
+            }
+            _repaint.Stop();
+            _repaintsDone = 0;
+            _repaint.Interval = TimeSpan.FromMilliseconds(RepaintDelaysMilliseconds[0]);
+            _repaint.Start();
+        }
+
+        private void Repaint()
+        {
+            if (_hwnd == IntPtr.Zero || _hiddenForFullscreen) return;
+            _root.InvalidateVisual();
+            Native.RedrawWindow(_hwnd, IntPtr.Zero, IntPtr.Zero, Native.RDW_INVALIDATE | Native.RDW_ALLCHILDREN | Native.RDW_UPDATENOW);
         }
 
         private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -379,6 +428,10 @@ namespace AST
                 }
                 case Native.WM_DPICHANGED:
                     QueueDock();
+                    break;
+                // Sent when a game changes the screen's resolution or gives it back, whether or not the bar was hidden.
+                case WM_DISPLAYCHANGE:
+                    RepaintNowAndLater();
                     break;
             }
             return IntPtr.Zero;

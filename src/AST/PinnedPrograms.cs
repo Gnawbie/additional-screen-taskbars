@@ -26,6 +26,8 @@ namespace AST
         public string AppId;
         public string Name;
         public bool IsPinned;
+        /// <summary>The button's name as Windows gives it, for the log.</summary>
+        public string ButtonName;
     }
 
     /// <summary>Understands the Windows taskbar's pinned buttons, and finds their icons and starts their programs.</summary>
@@ -80,6 +82,7 @@ namespace AST
                 AppId = automationId.Substring(prefix.Length),
                 Name = shortcut ?? EnglishName.Match(name).Groups[1].Value,
                 IsPinned = name.EndsWith(" pinned") || shortcut != null,
+                ButtonName = name,
             };
         }
 
@@ -98,7 +101,42 @@ namespace AST
         public static string ExePathOfWindow(IntPtr hwnd)
         {
             Native.GetWindowThreadProcessId(hwnd, out uint pid);
-            return Native.ExePathOf(pid);
+            return ProgramExeOf(pid);
+        }
+
+        /// <summary>
+        /// Some programs are a single exe that unpacks itself into Temp and runs from there, under a new folder name
+        /// each time (Electron "portable" builds do this). Pinning that copy would pin a file that's soon gone, so this
+        /// finds the exe the user actually started.
+        /// </summary>
+        private static string ProgramExeOf(uint pid)
+        {
+            string original = Native.ExePathOf(pid), exe = original;
+            // A launcher may itself be an unpacked copy, so look a few steps up.
+            for (int depth = 0; exe != null && IsInTemp(exe) && depth < 3; depth++)
+            {
+                pid = Native.ParentProcessId(pid);
+                exe = pid == 0 ? null : Native.ExePathOf(pid);
+                if (exe != null && !IsInTemp(exe)) return exe;
+            }
+            return original;
+        }
+
+        // Temp is often given in the short 8.3 form, while running programs report full names.
+        private static readonly string TempFolder = LongPath(Path.GetTempPath());
+
+        private static bool IsInTemp(string exe) => TempFolder != null && exe.StartsWith(TempFolder, StringComparison.OrdinalIgnoreCase);
+
+        private static string LongPath(string folder)
+        {
+            try
+            {
+                string full = new DirectoryInfo(folder).FullName;
+                var sb = new System.Text.StringBuilder(1024);
+                if (Native.GetLongPathName(full, sb, sb.Capacity) is int n && n > 0 && n < sb.Capacity) full = sb.ToString();
+                return full.EndsWith(@"\") ? full : full + @"\";
+            }
+            catch { return null; }
         }
 
         /// <summary>Finds the program behind a pinned item, for "Open file location" and "Run as administrator".</summary>
@@ -112,14 +150,9 @@ namespace AST
                 if (File.Exists(path)) return path;
             }
             if (pinned.Shortcut == null || !File.Exists(pinned.Shortcut)) return null;
-            if (!pinned.Shortcut.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase)) return pinned.Shortcut;
-            try
-            {
-                dynamic shell = Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell"));
-                string target = shell.CreateShortcut(pinned.Shortcut).TargetPath;
-                return !string.IsNullOrEmpty(target) && File.Exists(target) ? target : null;
-            }
-            catch (Exception) { return null; }
+            if (!IsShortcut(pinned.Shortcut)) return pinned.Shortcut;
+            string target = ShortcutTarget(pinned.Shortcut);
+            return target != null && File.Exists(target) ? target : null;
         }
 
         public static void RunAsAdministrator(string exePath)
@@ -146,8 +179,13 @@ namespace AST
             Native.GetWindowThreadProcessId(hwnd, out uint pid);
             string packaged = PackagedAppId(pid);
             if (!string.IsNullOrEmpty(packaged)) return packaged;
-            string exe = Native.ExePathOf(pid);
-            if (exe == null) return null;
+            string exe = ProgramExeOf(pid);
+            return exe == null ? null : AppIdOfExe(exe);
+        }
+
+        /// <summary>The id Windows gives a program's windows when the program doesn't set one itself.</summary>
+        private static string AppIdOfExe(string exe)
+        {
             if (Path.GetFileName(exe).Equals("explorer.exe", StringComparison.OrdinalIgnoreCase)) return ExplorerAppId;
             foreach (var folder in KnownFolders)
             {
@@ -156,6 +194,103 @@ namespace AST
                     return folder.Value + exe.Substring(root.Length);
             }
             return exe;
+        }
+
+        /// <summary>
+        /// What to pin to the bars for a program or shortcut picked in File Explorer or dropped on a bar. The id is
+        /// the one the program's windows will have, so the pin and its open windows share one button.
+        /// </summary>
+        public static ExtraPin TaskbarPinForFile(string path)
+        {
+            if (!IsExistingFile(path)) return null;
+            string name = Path.GetFileNameWithoutExtension(path);
+            if (IsShortcut(path))
+            {
+                string id = ShortcutAppId(path);
+                if (!string.IsNullOrEmpty(id)) return new ExtraPin { AppId = id, Name = name, Path = path };
+                string target = ShortcutTarget(path);
+                return new ExtraPin { AppId = IsExe(target) ? AppIdOfExe(target) : path, Name = name, Path = path };
+            }
+            if (IsExe(path))
+            {
+                // An installed program's Start menu shortcut can give its windows an id of their own.
+                var shortcut = StartMenuShortcutFor(path);
+                if (shortcut != null) return new ExtraPin { AppId = ShortcutAppId(shortcut), Name = Path.GetFileNameWithoutExtension(shortcut), Path = shortcut };
+                return new ExtraPin { AppId = AppIdOfExe(path), Name = ProgramName(path) ?? name, Path = path };
+            }
+            return new ExtraPin { AppId = path, Name = Path.GetFileName(path), Path = path };
+        }
+
+        /// <summary>
+        /// What to pin to AST's Start menu for a file. Start pins are opened by their id alone, so this is the file
+        /// itself unless the program is listed among Windows' apps under an id of its own.
+        /// </summary>
+        public static StartTile StartPinForFile(string path)
+        {
+            if (!IsExistingFile(path)) return null;
+            string shortcut = IsShortcut(path) ? path : IsExe(path) ? StartMenuShortcutFor(path) : null;
+            string id = shortcut == null ? null : ShortcutAppId(shortcut);
+            if (!string.IsNullOrEmpty(id) && ReadIcon(ShellAppsFolder + id) != null)
+                return new StartTile { AppId = id, Name = Path.GetFileNameWithoutExtension(shortcut) };
+            string name = IsExe(path) ? ProgramName(path) ?? Path.GetFileNameWithoutExtension(path) : Path.GetFileNameWithoutExtension(path);
+            return new StartTile { AppId = path, Name = name };
+        }
+
+        private static bool IsShortcut(string path) => path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase);
+
+        private static bool IsExe(string path) => path != null && path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase);
+
+        private static string ShortcutTarget(string shortcut)
+        {
+            try
+            {
+                dynamic shell = Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell"));
+                string target = shell.CreateShortcut(shortcut).TargetPath;
+                return string.IsNullOrEmpty(target) ? null : target;
+            }
+            catch (Exception) { return null; }
+        }
+
+        private static bool ShortcutHasArguments(string shortcut)
+        {
+            try
+            {
+                dynamic shell = Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell"));
+                return !string.IsNullOrEmpty((string)shell.CreateShortcut(shortcut).Arguments);
+            }
+            catch (Exception) { return false; }
+        }
+
+        /// <summary>The app id a shortcut gives the program it starts, as installers set for the Start menu.</summary>
+        private static string ShortcutAppId(string shortcut)
+        {
+            try
+            {
+                var iid = typeof(IPropertyStore).GUID;
+                SHGetPropertyStoreFromParsingName(shortcut, IntPtr.Zero, 0, ref iid, out IPropertyStore store);
+                var key = new PropertyKey { Format = new Guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3"), Id = 5 };
+                store.GetValue(ref key, out PropVariant value);
+                try { return value.Type == VT_LPWSTR ? Marshal.PtrToStringUni(value.Pointer) : null; }
+                finally { PropVariantClear(ref value); }
+            }
+            catch (Exception) { return null; }
+        }
+
+        /// <summary>A Start menu shortcut that starts this exe and gives it an app id, preferring one without extra arguments.</summary>
+        private static string StartMenuShortcutFor(string exe)
+        {
+            var folders = new[] { Environment.SpecialFolder.Programs, Environment.SpecialFolder.CommonPrograms }
+                .Select(Environment.GetFolderPath).Where(Directory.Exists);
+            var matches = new List<string>();
+            foreach (var folder in folders)
+            {
+                IEnumerable<string> shortcuts;
+                try { shortcuts = Directory.GetFiles(folder, "*.lnk", SearchOption.AllDirectories); }
+                catch (Exception) { continue; }
+                matches.AddRange(shortcuts.Where(s => string.Equals(ShortcutTarget(s), exe, StringComparison.OrdinalIgnoreCase)
+                    && !string.IsNullOrEmpty(ShortcutAppId(s))));
+            }
+            return matches.OrderBy(ShortcutHasArguments).FirstOrDefault();
         }
 
         private static readonly KeyValuePair<Environment.SpecialFolder, string>[] KnownFolders =
@@ -311,6 +446,8 @@ namespace AST
 
         [DllImport("shell32.dll", PreserveSig = false)]
         private static extern void SHGetPropertyStoreForWindow(IntPtr hwnd, ref Guid iid, out IPropertyStore store);
+        [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = false)]
+        private static extern void SHGetPropertyStoreFromParsingName(string path, IntPtr bindContext, int flags, ref Guid iid, out IPropertyStore store);
         [DllImport("ole32.dll")] private static extern int PropVariantClear(ref PropVariant value);
 
         [StructLayout(LayoutKind.Sequential)]

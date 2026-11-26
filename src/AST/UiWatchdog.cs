@@ -13,9 +13,26 @@ namespace AST
     {
         private const int FreezeMilliseconds = 8000, CheckMilliseconds = 250, MaxSuspendMilliseconds = 2000;
 
+        private const int StillRunningMilliseconds = 10 * 60 * 1000;
+
         public static void Start(Dispatcher dispatcher, Thread uiThread)
         {
             new Thread(() => Watch(dispatcher, uiThread)) { IsBackground = true, Name = "AST watchdog" }.Start();
+            new Thread(LogStillRunning) { IsBackground = true, Name = "AST still running" }.Start();
+        }
+
+        /// <summary>
+        /// If AST is ended from outside it can't log anything, so the last of these shows roughly when that happened.
+        /// It has its own thread so that it carries on while the bars are frozen. The sizes would show a slow leak.
+        /// </summary>
+        private static void LogStillRunning()
+        {
+            while (true)
+            {
+                Thread.Sleep(StillRunningMilliseconds);
+                using (var self = Process.GetCurrentProcess())
+                    Log.Write("Still running, " + self.PrivateMemorySize64 / (1024 * 1024) + " MB, " + self.HandleCount + " handles");
+            }
         }
 
         private static void Watch(Dispatcher dispatcher, Thread uiThread)

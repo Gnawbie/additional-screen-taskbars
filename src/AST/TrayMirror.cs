@@ -5,7 +5,6 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows.Automation;
 using System.Windows.Threading;
 
 namespace AST
@@ -17,7 +16,7 @@ namespace AST
         public string Name;
         public string Glyph;
         public TrayKind Kind;
-        public AutomationElement Element;
+        public IUIAutomationElement Element;
     }
 
     /// <summary>
@@ -114,6 +113,9 @@ namespace AST
                 string pinnedSignature = string.Join("\n", pinned.Select(p => p.AppId + "|" + p.Name));
                 if (pinnedSignature != _pinnedSignature)
                 {
+                    // Pins sometimes went missing from the bars, and only Windows' own button names show why.
+                    Log.Write("Pins from Windows: " + string.Join(", ", pinned.Select(p => p.Name)) +
+                        Environment.NewLine + "    Windows taskbar buttons: " + string.Join(" | ", order.Select(o => "\"" + o.ButtonName + "\" " + o.AppId)));
                     _pinnedSignature = pinnedSignature;
                     Pinned = pinned;
                     PinnedChanged?.Invoke();
@@ -133,14 +135,14 @@ namespace AST
             if (taskbar == IntPtr.Zero) return;
 
             // The raw tree, because the filtered view can leave these buttons out while a fullscreen app is active.
-            var trayButtons = new List<AutomationElement>();
-            var taskButtons = new List<AutomationElement>();
-            Collect(AutomationElement.FromHandle(taskbar), trayButtons, taskButtons, 0);
+            var trayButtons = new List<IUIAutomationElement>();
+            var taskButtons = new List<IUIAutomationElement>();
+            Collect(Uia.FromHandle(taskbar), trayButtons, taskButtons, 0);
             var seen = new HashSet<TrayKind>();
             foreach (var entry in trayButtons
                 // The clock's class varies, so also check its name. AST's bars have their own clock.
-                .Where(e => e.Current.ClassName != ClockClass && e.Current.ClassName != ShowDesktopClass && !e.Current.Name.StartsWith("Clock"))
-                .OrderBy(e => e.Current.BoundingRectangle.X)
+                .Where(e => e.CurrentClassName != ClockClass && e.CurrentClassName != ShowDesktopClass && !e.CurrentName.StartsWith("Clock"))
+                .OrderBy(e => e.CurrentBoundingRectangle.Left)
                 .Select(Describe))
             {
                 // Windows has only one of each of these. A button with another name in the user's language could still
@@ -152,11 +154,11 @@ namespace AST
                 }
                 entries.Add(entry);
             }
-            var inOrder = taskButtons.OrderBy(e => e.Current.BoundingRectangle.X).ToList();
+            var inOrder = taskButtons.OrderBy(e => e.CurrentBoundingRectangle.Left).ToList();
             pinned.AddRange(inOrder
-                .Select(e => PinnedPrograms.FromTaskbarButton(e.Current.Name, e.Current.AutomationId))
+                .Select(e => PinnedPrograms.FromTaskbarButton(e.CurrentName, e.CurrentAutomationId))
                 .Where(p => p != null));
-            order.AddRange(inOrder.Select(e => PinnedPrograms.OrderEntryFromButton(e.Current.Name, e.Current.AutomationId)).Where(o => o != null));
+            order.AddRange(inOrder.Select(e => PinnedPrograms.OrderEntryFromButton(e.CurrentName, e.CurrentAutomationId)).Where(o => o != null));
         }
 
         private static readonly HashSet<string> LoggedExtras = new HashSet<string>();
@@ -164,29 +166,29 @@ namespace AST
         /// <summary>Once per button, since the tray is read again every few seconds.</summary>
         private static void LogExtra(TrayEntry entry)
         {
-            string what = entry.Kind + " button \"" + entry.Name + "\" (" + entry.Element.Current.ClassName + ")";
+            string what = entry.Kind + " button \"" + entry.Name + "\" (" + entry.Element.CurrentClassName + ")";
             lock (LoggedExtras)
                 if (!LoggedExtras.Add(what)) return;
             Log.Write("Left out a second " + what);
         }
 
-        private static void Collect(AutomationElement parent, List<AutomationElement> trayButtons, List<AutomationElement> taskButtons, int depth)
+        private static void Collect(IUIAutomationElement parent, List<IUIAutomationElement> trayButtons, List<IUIAutomationElement> taskButtons, int depth)
         {
             if (depth > MaxTreeDepth) return;
-            var walker = TreeWalker.RawViewWalker;
-            for (var child = walker.GetFirstChild(parent); child != null; child = walker.GetNextSibling(child))
+            var walker = Uia.RawViewWalker;
+            for (var child = walker.GetFirstChildElement(parent); child != null; child = walker.GetNextSiblingElement(child))
             {
-                if (child.Current.AutomationId == TrayButtonId) trayButtons.Add(child);
-                else if (child.Current.ClassName == TaskButtonClass) taskButtons.Add(child);
+                if (child.CurrentAutomationId == TrayButtonId) trayButtons.Add(child);
+                else if (child.CurrentClassName == TaskButtonClass) taskButtons.Add(child);
                 Collect(child, trayButtons, taskButtons, depth + 1);
             }
         }
 
         /// <summary>Names are in the user's language, so unknown ones still get a usable generic icon.</summary>
-        private static TrayEntry Describe(AutomationElement element)
+        private static TrayEntry Describe(IUIAutomationElement element)
         {
-            string name = element.Current.Name ?? "";
-            string className = element.Current.ClassName;
+            string name = element.CurrentName ?? "";
+            string className = element.CurrentClassName;
             string n = name.ToLowerInvariant();
             var entry = new TrayEntry { Name = name, Element = element, Glyph = GlyphOther };
 
@@ -239,7 +241,7 @@ namespace AST
                     string flyout = FlyoutWindowFor(entry.Kind);
                     // Pressing an open flyout's button closes it, so there is nothing to move.
                     bool wasOpen = flyout != null && IsOpen(flyout);
-                    ((InvokePattern)entry.Element.GetCurrentPattern(InvokePattern.Pattern)).Invoke();
+                    Uia.Invoke(entry.Element);
                     if (flyout != null && !wasOpen) MoveFlyout(flyout, monitor(), edge());
                 }
                 catch (Exception ex) { Log.Write("Tray button failed: " + ex.Message); }

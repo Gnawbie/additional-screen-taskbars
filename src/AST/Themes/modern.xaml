@@ -149,10 +149,13 @@
         <!-- The clock stays upright and shrinks to fit a thin side bar. -->
         <Viewbox Style="{StaticResource TrailingDock}" Stretch="Uniform" StretchDirection="DownOnly" VerticalAlignment="Center"
                  Visibility="{Binding ShowClock, Converter={StaticResource BoolToVisible}}">
-          <StackPanel>
-            <TextBlock Text="{Binding TimeText}" Foreground="#F2F2F2" FontSize="12" HorizontalAlignment="Center" />
-            <TextBlock Text="{Binding DateText}" Foreground="#C8C8C8" FontSize="11" HorizontalAlignment="Center" />
-          </StackPanel>
+          <!-- Clicking it opens the calendar. -->
+          <Button Style="{StaticResource FlatButton}" Command="{Binding ClockCommand}">
+            <StackPanel>
+              <TextBlock Text="{Binding TimeText}" Foreground="#F2F2F2" FontSize="12" HorizontalAlignment="Center" />
+              <TextBlock Text="{Binding DateText}" Foreground="#C8C8C8" FontSize="11" HorizontalAlignment="Center" />
+            </StackPanel>
+          </Button>
         </Viewbox>
 
         <!-- Docked after the clock so it sits just inside it. It wraps onto extra rows on a thin side bar. -->

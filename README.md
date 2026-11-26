@@ -2,7 +2,7 @@
 
 Windows 11 can't give each screen its own taskbar position. AST adds a separate taskbar to your other screens, and each screen can have its own setting.
 
-[![Download ASTSetup.exe](https://img.shields.io/badge/Download-ASTSetup.exe-2ea44f?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/Gnawbie/additional-screen-taskbars/releases/download/v0.1.6/ASTSetup.exe)
+[![Download ASTSetup.exe](https://img.shields.io/badge/Download-ASTSetup.exe-2ea44f?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/Gnawbie/additional-screen-taskbars/releases/download/v0.1.7/ASTSetup.exe)
 
 ![Two screens side by side: the Windows taskbar along the bottom of the main screen, and an AST taskbar down the left side of the second screen](docs/screenshot.png)
 
@@ -19,6 +19,8 @@ Windows 11 can't give each screen its own taskbar position. AST adds a separate 
 - Show program names vertically on side bars
 - Right-click a bar and choose **Show pinned programs** to also list what's pinned to the Windows taskbar, in the same order
 - Right-click a program to pin or unpin it, run it as administrator or open its file location. Windows doesn't let other programs change its taskbar, so these pins apply to AST's bars only
+- Pin a program or shortcut from File Explorer: right-click it and choose **Pin to taskbar (AST)** or **Pin to Start (AST)**, or drag it onto a bar. Windows' own pin items only change Windows' taskbar and Start menu
+- Click the clock for a calendar like the one in Windows 10
 - Tray buttons for hidden icons, network and volume. Right-click the sound icon for a quick volume slider, and to switch between devices such as a headset and speakers. Right-click the network icon to run a speed test in your browser, using the site you pick in Options
 - Choose the Modern or Classic look, or add your own (see [docs/MODDING.md](docs/MODDING.md))
 - Update from Options with **Update to latest version**. AST only contacts GitHub when you press it
@@ -77,7 +79,13 @@ Command line options: `--install`, `--update`, `--uninstall`, `--silent`, `--set
 
 ## Build
 
-You need Visual Studio or the VS Build Tools with a .NET Framework 4.7.1 or later targeting pack.
+You need Visual Studio 2019 or later, or the VS Build Tools, with:
+
+- the .NET Framework 4.7.1 or later targeting pack
+- the C++ x64 build tools (MSVC), in the "Desktop development with C++" workload
+- the Windows 10 or 11 SDK, for `makeappx.exe`
+
+The C++ tools and the SDK build the small handler and package that put AST's pin items in Windows 11's File Explorer right-click menu. Both are embedded in `AST.exe`.
 
 ```bash
 powershell -ExecutionPolicy Bypass -File build.ps1

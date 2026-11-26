@@ -101,6 +101,7 @@ namespace AST
                     bar.PinToggled += TogglePin;
                     bar.IsItemPinned = IsPinned;
                     bar.StartTileDropped += tile => SetTaskbarPin(tile.AppId, tile.Name, null, true);
+                    bar.FileDropped += PinFileToTaskbar;
                     bar.HideForFullscreenToggled += () =>
                     {
                         Config.KeepBarsOverFullscreen = !Config.KeepBarsOverFullscreen;
@@ -301,6 +302,32 @@ namespace AST
             }
             if (pin) Config.ShowPinnedPrograms = true;
             Sync();
+        }
+
+        /// <summary>Pins a program or shortcut file, chosen in File Explorer's menu or dropped on a bar.</summary>
+        public void PinFileToTaskbar(string path)
+        {
+            var pin = PinnedPrograms.TaskbarPinForFile(path);
+            if (pin == null)
+            {
+                Log.Write("Could not pin " + path + " to the taskbar: the file wasn't found");
+                return;
+            }
+            Log.Write("Pinning " + path + " to the taskbar as " + pin.AppId);
+            SetTaskbarPin(pin.AppId, pin.Name, pin.Path, true);
+        }
+
+        public void PinFileToStart(string path)
+        {
+            var tile = PinnedPrograms.StartPinForFile(path);
+            if (tile == null)
+            {
+                Log.Write("Could not pin " + path + " to Start: the file wasn't found");
+                return;
+            }
+            Log.Write("Pinning " + path + " to Start as " + tile.AppId);
+            if (!Config.StartPins.Any(p => SameApp(p.AppId, tile.AppId))) Config.StartPins.Add(tile);
+            Config.Save();
         }
 
         private void OnTrayChanged()

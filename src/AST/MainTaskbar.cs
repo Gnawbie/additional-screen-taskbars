@@ -119,12 +119,14 @@ namespace AST
                 {
                     // Windows only keeps the exit code readable for as long as this handle is held.
                     GC.KeepAlive(app.Handle);
+                    Log.Write("The taskbar guard is watching AST, process " + appProcessId);
                     app.WaitForExit();
-                    // A crash can end AST before it gets to log anything, which leaves this as the only record.
-                    if (app.ExitCode != 0) Log.Write("AST ended unexpectedly, exit code 0x" + app.ExitCode.ToString("X8"));
+                    // AST can end before it gets to log anything, which leaves this as the only record. A clean exit
+                    // code is worth keeping too: without "AST closed" before it, AST ended some other way.
+                    Log.Write((app.ExitCode != 0 ? "AST ended unexpectedly" : "AST's process ended") + ", exit code 0x" + app.ExitCode.ToString("X8"));
                 }
             }
-            catch (ArgumentException) { /* AST has already gone. */ }
+            catch (ArgumentException) { Log.Write("The taskbar guard found AST had already ended"); }
             catch (Exception ex) { Log.Write("The taskbar guard couldn't watch AST: " + ex.Message); }
         }
 
